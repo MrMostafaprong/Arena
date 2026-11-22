@@ -1,0 +1,197 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root,
+  [data-system-theme="royal_cyan"] {
+    --font-display: 'Changa', 'Tajawal', sans-serif;
+    --font-body: 'Tajawal', system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+
+    --sys-bg: #060a14;
+    --sys-surface: rgba(11, 18, 34, 0.92);
+    --sys-surface-deep: rgba(7, 12, 24, 0.96);
+    --sys-card: rgba(14, 24, 44, 0.88);
+    --sys-primary: #38bdf8;
+    --sys-primary-soft: rgba(56, 189, 248, 0.28);
+    --sys-accent: #e6b85c;
+    --sys-accent-soft: rgba(230, 184, 92, 0.28);
+    --sys-accent-text: #060a14;
+    --sys-border: rgba(56, 189, 248, 0.34);
+    --sys-border-muted: rgba(148, 163, 184, 0.16);
+    --sys-glow: rgba(56, 189, 248, 0.16);
+    --sys-ambient-a: rgba(56, 189, 248, 0.08);
+    --sys-ambient-b: rgba(230, 184, 92, 0.07);
+  }
+
+  [data-system-theme="crimson_abyss"] {
+    --sys-bg: #080510;
+    --sys-surface: rgba(18, 11, 33, 0.93);
+    --sys-surface-deep: rgba(11, 7, 22, 0.96);
+    --sys-card: rgba(24, 15, 42, 0.9);
+    --sys-primary: #a855f7;
+    --sys-primary-soft: rgba(168, 85, 247, 0.3);
+    --sys-accent: #f43f5e;
+    --sys-accent-soft: rgba(244, 63, 94, 0.3);
+    --sys-accent-text: #fff1f2;
+    --sys-border: rgba(168, 85, 247, 0.38);
+    --sys-border-muted: rgba(216, 180, 254, 0.16);
+    --sys-glow: rgba(244, 63, 94, 0.18);
+    --sys-ambient-a: rgba(168, 85, 247, 0.11);
+    --sys-ambient-b: rgba(244, 63, 94, 0.08);
+  }
+
+  html {
+    font-family: var(--font-body);
+    background-color: var(--sys-bg);
+    color: #f1f5f9;
+  }
+
+  h1, h2, h3, .font-display {
+    font-family: var(--font-display);
+    text-wrap: balance;
+  }
+
+  .font-mono-num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Manhwa System Window & Panel Architecture */
+.isekai-panel,
+.system-window {
+  position: relative;
+  background: linear-gradient(155deg, var(--sys-surface), var(--sys-surface-deep));
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--sys-border);
+  box-shadow:
+    0 16px 38px -14px rgba(2, 4, 14, 0.85),
+    0 0 28px -12px var(--sys-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    inset 0 0 22px var(--sys-glow);
+}
+
+.system-window::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    linear-gradient(to left, var(--sys-primary) 0%, transparent 18%) top right / 100% 1px no-repeat,
+    linear-gradient(to right, var(--sys-accent) 0%, transparent 18%) bottom left / 100% 1px no-repeat;
+  opacity: 0.72;
+}
+
+.isekai-card,
+.system-card {
+  background: linear-gradient(160deg, var(--sys-card), var(--sys-surface-deep));
+  border: 1px solid var(--sys-border-muted);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition: border-color 180ms cubic-bezier(0.16, 1, 0.3, 1), transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.system-card:hover {
+  border-color: var(--sys-border);
+}
+
+.system-btn-primary {
+  background: linear-gradient(135deg, var(--sys-accent), var(--sys-primary));
+  color: #060a14;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 8px 22px -8px var(--sys-glow);
+}
+
+.isekai-rune-bg {
+  background-color: var(--sys-bg);
+  background-image:
+    radial-gradient(circle at 18% 10%, var(--sys-ambient-a), transparent 44%),
+    radial-gradient(circle at 82% 88%, var(--sys-ambient-b), transparent 46%),
+    linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 44px 44px, 44px 44px;
+}
+
+/* Subtle dark scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #070b15;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #28354e;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3b4f73;
+}
+
+/* Custom range slider for Avatar Forge */
+input[type="range"].forge-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  background: #1b273d;
+  border-radius: 3px;
+  outline: none;
+}
+
+input[type="range"].forge-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--sys-accent);
+  border: 2px solid #0a0f1a;
+  cursor: pointer;
+  transition: transform 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+input[type="range"].forge-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.12);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Mobile Landscape Immediate Viewport Fit (phones held horizontally, height <= 520px) */
+@media (max-height: 520px) and (orientation: landscape) {
+  .landscape-phone-header-inner {
+    height: 3rem !important;
+    padding-top: 0.25rem !important;
+    padding-bottom: 0.25rem !important;
+  }
+  .landscape-phone-inline-nav {
+    display: flex !important;
+  }
+  .landscape-phone-hide-bottom {
+    display: none !important;
+  }
+  .landscape-phone-root {
+    padding-bottom: 0 !important;
+  }
+  .landscape-phone-story-banner {
+    height: 6.25rem !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
