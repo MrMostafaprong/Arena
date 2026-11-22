@@ -16,7 +16,9 @@ import type {
   PowerId,
   RivalChampion,
   SceneryPropDef,
+  SecretBossDef,
   WorldChestDef,
+  WorldEventZoneDef,
   WorldFastTravelDef,
 } from '../types/game';
 import {
@@ -26,7 +28,9 @@ import {
   OVERWORLD_MAP,
   POWERS,
   RIVAL_CHAMPIONS,
+  SECRET_WORLD_BOSSES,
   WEAPONS,
+  WORLD_EVENT_ZONES,
   computeFighterDerivedStats,
   computeSkillNetworkBonuses,
 } from '../data/gameCatalog';
@@ -86,6 +90,9 @@ interface SimMonster extends RenderMonster {
   pendingStrike: boolean;
   flankSlot: number;
   enraged: boolean;
+  secretBossId?: string;
+  eventZoneId?: string;
+  dmgMult?: number;
 }
 
 interface SimProjectile extends RenderProjectile {
@@ -159,7 +166,9 @@ export interface RadarPoint {
     | 'portal'
     | 'npc'
     | 'node'
-    | 'waystone';
+    | 'waystone'
+    | 'secret_boss'
+    | 'event_zone';
 }
 
 export interface LiveMissionStatus {
@@ -212,7 +221,11 @@ export interface HudSnapshot {
   consumables: Record<ConsumableId, number>;
   isOverworld: boolean;
   currentRegionName?: string;
-  nearbyInteractable?: { label: string; kind: 'chest' | 'npc' | 'portal' | 'node'; sublabel?: string } | null;
+  nearbyInteractable?: {
+    label: string;
+    kind: 'chest' | 'npc' | 'portal' | 'node' | 'secret_boss' | 'event_zone';
+    sublabel?: string;
+  } | null;
   npcDialogue?: string | null;
   discoveredRegionsCount?: number;
   totalRegionsCount?: number;
@@ -225,6 +238,9 @@ export interface HudSnapshot {
   activeChunksCount?: number;
   discoveredChunksCount?: number;
   currentBiomeColor?: string;
+  activeSecretBossName?: string;
+  activeEventZoneName?: string;
+  activeEventProgress?: string;
 }
 
 export interface CombatInitOptions {
@@ -242,11 +258,17 @@ export interface CombatInitOptions {
   onConsumeItem?: (id: ConsumableId) => boolean;
   initialDiscoveredRegions?: string[];
   initialOpenedChests?: string[];
+  initialDefeatedSecretBossIds?: string[];
+  initialCompletedWorldEventIds?: string[];
   onDiscoverRegion?: (regionId: string, name: string, gold: number, xp: number) => void;
   onOpenWorldChest?: (chest: WorldChestDef) => void;
   onWarpPortal?: (arenaId: ArenaId) => void;
   onGatherNode?: (kind: OverworldNodeKind, label: string) => void;
   onOpenNpcWork?: (npcId: string) => void;
+  onDefeatSecretBoss?: (boss: SecretBossDef) => void;
+  onCompleteWorldEvent?: (zone: WorldEventZoneDef) => void;
+  onCritLanded?: () => void;
+  onFusionCast?: () => void;
   quality: GraphicsQuality;
   cameraView: CameraViewMode;
   rivalChampion?: RivalChampion;
@@ -360,10 +382,17 @@ export class CombatSimulation {
   private activeChunksCount = 9;
   private currentBiomeColor = '#22C55E';
   private currentBiomeSkyTint = '#18365C';
+  private critsLanded = 0;
+  private fusionCasts = 0;
+  private secretBossesDefeatedCount = 0;
+  private worldEventsCompletedCount = 0;
+  private defeatedSecretBossIds = new Set<string>();
+  private completedWorldEventIds = new Set<string>();
+  private activeEventZone: { def: WorldEventZoneDef; wave: number; waveCount: number } | null = null;
   private nearbyInteractable: {
     label: string;
     sublabel?: string;
-    kind: 'chest' | 'npc' | 'portal' | 'node';
+    kind: 'chest' | 'npc' | 'portal' | 'node' | 'secret_boss' | 'event_zone';
     targetId: string;
     arenaId?: ArenaId;
   } | null = null;
@@ -383,6 +412,12 @@ export class CombatSimulation {
     }
     if (opts.initialOpenedChests) {
       opts.initialOpenedChests.forEach((id) => this.openedChests.add(id));
+    }
+    if (opts.initialDefeatedSecretBossIds) {
+      opts.initialDefeatedSecretBossIds.forEach((id) => this.defeatedSecretBossIds.add(id));
+    }
+    if (opts.initialCompletedWorldEventIds) {
+      opts.initialCompletedWorldEventIds.forEach((id) => this.completedWorldEventIds.add(id));
     }
     this.localConsumables = {
       elixir_heal: opts.consumables?.elixir_heal ?? 2,
@@ -568,9 +603,11 @@ export class CombatSimulation {
       }
     }
 
-    // Unload distant monsters cleanly when chunks unload
+    // Unload distant monsters cleanly when chunks unload (protect active secret bosses & event mobs)
     const maxMonsterDist = CHUNK_SIZE * (res.streamRadiusChunks + 1.5);
-    this.monsters = this.monsters.filter((m) => Math.hypot(m.x - px, m.z - pz) <= maxMonsterDist);
+    this.monsters = this.monsters.filter(
+      (m) => Boolean(m.secretBossId) || Boolean(m.eventZoneId) || Math.hypot(m.x - px, m.z - pz) <= maxMonsterDist
+    );
 
     // Spawn chunk monsters up to cap (22 active monsters for optimal framerate)
     for (const spot of res.pendingPatrols) {
@@ -941,6 +978,129 @@ export class CombatSimulation {
     } else if (target.kind === 'portal' && target.arenaId) {
       audioSynth.playPower();
       this.opts.onWarpPortal?.(target.arenaId);
+    } else if (target.kind === 'secret_boss') {
+      const sb = SECRET_WORLD_BOSSES.find((b) => b.id === target.targetId);
+      if (!sb || this.defeatedSecretBossIds.has(sb.id)) return;
+      if (this.monsters.some((m) => m.secretBossId === sb.id && m.hp > 0)) return;
+      const def = MONSTERS[sb.archetype] || MONSTERS.magma_boss;
+      const bossHp = Math.round(def.maxHp * sb.hpMult);
+      const sx = sb.x + 5.5;
+      const sz = sb.z + 5.5;
+      this.monsters.push({
+        id: this.nextId('sboss'),
+        archetype: sb.archetype,
+        name: sb.name,
+        x: sx,
+        y: this.getTerrainHeight(sx, sz),
+        z: sz,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        yaw: Math.atan2(p1.x - sx, p1.z - sz),
+        hp: bossHp,
+        maxHp: bossHp,
+        walkPhase: 0,
+        attackTimer: 0,
+        attackCooldown: 1.1,
+        telegraphTimer: 0,
+        telegraphMax: 0.72,
+        telegraphRadius: 5.2,
+        pendingStrike: false,
+        hitFlash: 0,
+        frozenTimer: 0,
+        stunTimer: 0,
+        isBoss: true,
+        flankSlot: 0,
+        enraged: false,
+        secretBossId: sb.id,
+        dmgMult: sb.dmgMult,
+      });
+      audioSynth.playWorldEventHorn();
+      this.addCameraShake(0.32, 0.42);
+      this.rings.push({
+        x: sx,
+        y: 0.14,
+        z: sz,
+        radius: 0.8,
+        maxRadius: 9.5,
+        color: sb.accentColor,
+        alpha: 0.98,
+        life: 0.65,
+        maxLife: 0.65,
+        growSpeed: 14,
+        isFusion: true,
+        secondaryColor: '#FEF08A',
+      });
+      this.spawnBurst(sx, 1.8, sz, sb.accentColor, 26);
+      this.showBanner(`ظهر الزعيم السري: ${sb.name} (${sb.title})!`, 3.6);
+    } else if (target.kind === 'event_zone') {
+      const evt = WORLD_EVENT_ZONES.find((z) => z.id === target.targetId);
+      if (!evt || this.completedWorldEventIds.has(evt.id) || this.activeEventZone) return;
+      this.activeEventZone = { def: evt, wave: 1, waveCount: evt.waveCount };
+      this.spawnWorldEventWave(evt, 1);
+      audioSynth.playWorldEventHorn();
+      this.addCameraShake(0.24, 0.34);
+      this.rings.push({
+        x: evt.x,
+        y: 0.14,
+        z: evt.z,
+        radius: 1.0,
+        maxRadius: evt.radius,
+        color: evt.color,
+        alpha: 0.94,
+        life: 0.65,
+        maxLife: 0.65,
+        growSpeed: 22,
+        isFusion: true,
+        secondaryColor: '#FFFFFF',
+      });
+      this.showBanner(`بدأ حدث القارة: ${evt.name} — الموجة 1 من ${evt.waveCount}!`, 3.4);
+    }
+  }
+
+  private spawnWorldEventWave(evt: WorldEventZoneDef, wave: number) {
+    const pool: MonsterArchetype[] =
+      evt.kind === 'ether_storm'
+        ? ['frost_specter', 'wraith_knight', 'ash_stalker']
+        : evt.kind === 'meteor_rift'
+          ? ['ember_imp', 'obsidian_golem', 'ash_stalker']
+          : ['wraith_knight', 'venom_crawler', 'obsidian_golem'];
+    const count = 3 + wave;
+    for (let i = 0; i < count; i++) {
+      const ang = (i / count) * Math.PI * 2 + wave * 0.6;
+      const mx = evt.x + Math.cos(ang) * 9.5;
+      const mz = evt.z + Math.sin(ang) * 9.5;
+      const arch = pool[(i + wave) % pool.length];
+      const def = MONSTERS[arch] || MONSTERS.ash_stalker;
+      const hp = Math.round(def.maxHp * (1 + wave * 0.22));
+      this.monsters.push({
+        id: this.nextId('evmon'),
+        archetype: arch,
+        name: `${def.name} (حدث)`,
+        x: mx,
+        y: this.getTerrainHeight(mx, mz),
+        z: mz,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        yaw: Math.random() * Math.PI * 2,
+        hp,
+        maxHp: hp,
+        walkPhase: Math.random() * 5,
+        attackTimer: 0,
+        attackCooldown: 0.9 + Math.random() * 0.6,
+        telegraphTimer: 0,
+        telegraphMax: 0.72,
+        telegraphRadius: def.isBoss ? 4.8 : 2.9,
+        pendingStrike: false,
+        hitFlash: 0,
+        frozenTimer: 0,
+        stunTimer: 0,
+        isBoss: def.isBoss,
+        flankSlot: i % 5,
+        enraged: false,
+        eventZoneId: evt.id,
+      });
     }
   }
 
@@ -1107,10 +1267,11 @@ export class CombatSimulation {
         radius: weapon.range * 0.92,
         arcSpread: weapon.id === 'dragon_spear' ? 0.85 : 2.15,
         color: weapon.energyColor,
-        alpha: 0.85,
+        alpha: 0.88,
         tilt: fighter.comboStep === 1 ? -0.48 : 0.48,
-        life: 0.22,
-        maxLife: 0.22,
+        life: isCrit ? 0.28 : 0.22,
+        maxLife: isCrit ? 0.28 : 0.22,
+        critical: isCrit,
       });
 
       this.applyMeleeHitCone(fighter, weapon.range, weapon.id === 'dragon_spear' ? 0.65 : 1.4, dmg, weapon.knockback, isCrit);
@@ -1250,10 +1411,11 @@ export class CombatSimulation {
         radius,
         arcSpread: weapon.id === 'storm_hammer' ? Math.PI * 1.9 : 2.65,
         color: weapon.energyColor,
-        alpha: 0.94,
+        alpha: 0.96,
         tilt: 0.18,
-        life: 0.32,
-        maxLife: 0.32,
+        life: isCrit ? 0.38 : 0.32,
+        maxLife: isCrit ? 0.38 : 0.32,
+        critical: isCrit,
       });
       if (weapon.id === 'storm_hammer') {
         this.rings.push({
@@ -1327,8 +1489,31 @@ export class CombatSimulation {
     const scaledDmg = Math.round(
       power.damage * fighter.statsDerived.powerScale * highGroundMult * lvMult * netDmgMult * fusionBonusMult
     );
-    audioSynth.playPower();
-    if (fighter.team === 'player1') this.addCameraShake(power.isFusion ? 0.28 : 0.22, 0.35);
+    if (power.isFusion) {
+      audioSynth.playFusionCast();
+      if (fighter.team === 'player1') {
+        this.fusionCasts += 1;
+        this.opts.onFusionCast?.();
+        this.addCameraShake(0.32, 0.44);
+      }
+      this.rings.push({
+        x: fighter.x,
+        y: fighter.y + 0.12,
+        z: fighter.z,
+        radius: 0.8,
+        maxRadius: effRadius * 1.08,
+        color: power.color,
+        alpha: 0.96,
+        life: 0.58,
+        maxLife: 0.58,
+        growSpeed: effRadius * 2.35,
+        isFusion: true,
+        secondaryColor: '#FDE047',
+      });
+    } else {
+      audioSynth.playPower();
+      if (fighter.team === 'player1') this.addCameraShake(0.22, 0.34);
+    }
 
     if (power.id === 'inferno_nova') {
       this.rings.push({
@@ -1869,20 +2054,34 @@ export class CombatSimulation {
       if (this.combo > this.maxCombo) this.maxCombo = this.combo;
       attacker.energy = Math.min(attacker.maxEnergy, attacker.energy + 7);
       if (critical) {
-        this.hitstopTimer = 0.035;
-        this.addCameraShake(0.11, 0.2);
+        this.critsLanded += 1;
+        this.opts.onCritLanded?.();
+        this.hitstopTimer = Math.max(this.hitstopTimer, 0.045);
+        this.addCameraShake(0.14, 0.26);
+        audioSynth.playCriticalSlash();
+        if (this.quality !== 'eco') {
+          this.lightnings.push({
+            x: monster.x,
+            z: monster.z,
+            color: '#FDE047',
+            alpha: 0.82,
+            seed: Math.random() * 100,
+            life: 0.2,
+            maxLife: 0.2,
+          });
+        }
       }
     }
 
     audioSynth.playHit(critical);
-    this.spawnBurst(monster.x, monster.y + 1.1, monster.z, critical ? '#F59E0B' : '#F87171', critical ? 10 : 6);
+    this.spawnBurst(monster.x, monster.y + 1.1, monster.z, critical ? '#FDE047' : '#F87171', critical ? 16 : 6);
     this.spawnFloatingText(
       monster.x,
       monster.y + (monster.isBoss ? 3.2 : 2.1),
       monster.z,
       critical ? `حاسمة -${damage}!` : `-${damage}`,
       critical ? '#FDE047' : '#F8FAFC',
-      critical ? 1.24 : 1.0
+      critical ? 1.32 : 1.0
     );
 
     if (monster.hp <= 0) {
@@ -1891,7 +2090,38 @@ export class CombatSimulation {
       if (monster.isBoss) this.bossKills += 1;
       this.advanceMissionProgress('kill', 1);
       audioSynth.playKo();
-      this.spawnBurst(monster.x, monster.y + 1.2, monster.z, MONSTERS[monster.archetype].accentColor, 18);
+      this.spawnBurst(monster.x, monster.y + 1.2, monster.z, MONSTERS[monster.archetype].accentColor, 20);
+
+      if (monster.secretBossId && !this.defeatedSecretBossIds.has(monster.secretBossId)) {
+        const sb = SECRET_WORLD_BOSSES.find((b) => b.id === monster.secretBossId);
+        if (sb) {
+          this.defeatedSecretBossIds.add(sb.id);
+          this.secretBossesDefeatedCount += 1;
+          this.bonusMissionGold += sb.rewardGold;
+          this.opts.onDefeatSecretBoss?.(sb);
+          audioSynth.playAchievementUnlock();
+          this.rings.push({
+            x: monster.x,
+            y: 0.14,
+            z: monster.z,
+            radius: 0.8,
+            maxRadius: 9.0,
+            color: sb.accentColor,
+            alpha: 0.98,
+            life: 0.65,
+            maxLife: 0.65,
+            growSpeed: 14,
+            isFusion: true,
+            secondaryColor: '#FDE047',
+          });
+          this.spawnFloatingText(monster.x, 3.6, monster.z, `سقط ${sb.name}!`, '#FDE047', 1.4);
+          this.showBanner(
+            `انتصار أسطوري! هزمت الزعيم السري ${sb.name} (+${sb.rewardGold} ذهب، +${sb.rewardGems} جوهرة، +${sb.rewardMarks} شارة)`,
+            4.2
+          );
+        }
+      }
+
       if (Math.random() < 0.48 || monster.isBoss) {
         this.pickups.push({
           id: this.nextId('pk'),
@@ -1970,6 +2200,13 @@ export class CombatSimulation {
         this.comboTimer = 3.4;
         if (this.combo > this.maxCombo) this.maxCombo = this.combo;
         attacker.energy = Math.min(attacker.maxEnergy, attacker.energy + 8);
+        if (critical) {
+          this.critsLanded += 1;
+          this.opts.onCritLanded?.();
+          this.hitstopTimer = Math.max(this.hitstopTimer, 0.04);
+          this.addCameraShake(0.13, 0.24);
+          audioSynth.playCriticalSlash();
+        }
       }
     }
 
@@ -2284,6 +2521,10 @@ export class CombatSimulation {
       victory,
       kills: this.kills,
       bossKills: this.bossKills,
+      critsLanded: this.critsLanded,
+      fusionCasts: this.fusionCasts,
+      secretBossesDefeated: this.secretBossesDefeatedCount,
+      worldEventsCompleted: this.worldEventsCompletedCount,
       waveReached: this.wave,
       maxCombo: this.maxCombo,
       damageDealt: Math.round(this.damageDealt),
@@ -3068,6 +3309,75 @@ export class CombatSimulation {
       }
     }
 
+    for (const sb of SECRET_WORLD_BOSSES) {
+      if (this.defeatedSecretBossIds.has(sb.id)) continue;
+      if (this.monsters.some((m) => m.secretBossId === sb.id && m.hp > 0)) continue;
+      const d = Math.hypot(p1.x - sb.x, p1.z - sb.z);
+      if (d <= 5.5 && d < bestDist) {
+        bestDist = d;
+        best = {
+          kind: 'secret_boss',
+          targetId: sb.id,
+          label: `استدعِ الزعيم السري: ${sb.name}`,
+          sublabel: `${sb.title} · جائزة +${sb.rewardGold} ذهب ولقب حصري`,
+        };
+      }
+    }
+
+    for (const evt of WORLD_EVENT_ZONES) {
+      if (this.completedWorldEventIds.has(evt.id) || this.activeEventZone) continue;
+      const d = Math.hypot(p1.x - evt.x, p1.z - evt.z);
+      if (d <= 6.5 && d < bestDist) {
+        bestDist = d;
+        best = {
+          kind: 'event_zone',
+          targetId: evt.id,
+          label: `ابدأ الحدث الديناميكي: ${evt.name}`,
+          sublabel: `${evt.waveCount} موجات · +${evt.rewardGold} ذهب و +${evt.rewardGems} جوهرة`,
+        };
+      }
+    }
+
+    // Track active dynamic event zone wave progression
+    if (this.activeEventZone) {
+      const evt = this.activeEventZone.def;
+      const remaining = this.monsters.filter((m) => m.hp > 0 && m.eventZoneId === evt.id).length;
+      if (remaining === 0) {
+        if (this.activeEventZone.wave < this.activeEventZone.waveCount) {
+          this.activeEventZone.wave += 1;
+          this.spawnWorldEventWave(evt, this.activeEventZone.wave);
+          audioSynth.playWorldEventHorn();
+          this.showBanner(`${evt.name} — الموجة ${this.activeEventZone.wave} من ${this.activeEventZone.waveCount}!`, 3.0);
+        } else {
+          this.completedWorldEventIds.add(evt.id);
+          this.worldEventsCompletedCount += 1;
+          this.bonusMissionGold += evt.rewardGold;
+          this.opts.onCompleteWorldEvent?.(evt);
+          audioSynth.playAchievementUnlock();
+          this.rings.push({
+            x: evt.x,
+            y: 0.14,
+            z: evt.z,
+            radius: 0.8,
+            maxRadius: 9.5,
+            color: evt.color,
+            alpha: 0.98,
+            life: 0.65,
+            maxLife: 0.65,
+            growSpeed: 15,
+            isFusion: true,
+            secondaryColor: '#FDE047',
+          });
+          this.spawnFloatingText(p1.x, p1.y + 2.7, p1.z, `اكتمل حدث: ${evt.name}!`, '#38BDF8', 1.3);
+          this.showBanner(
+            `انتصر الأثير! أكملت ${evt.name} (+${evt.rewardGold} ذهب، +${evt.rewardGems} جوهرة، +${evt.rewardMarks} شارة)`,
+            4.0
+          );
+          this.activeEventZone = null;
+        }
+      }
+    }
+
     this.nearbyInteractable = best;
   }
 
@@ -3257,6 +3567,9 @@ export class CombatSimulation {
   }
 
   private addCameraShake(duration: number, intensity: number) {
+    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      return;
+    }
     this.shakeTimer = Math.max(this.shakeTimer, duration);
     this.shakeIntensity = Math.max(this.shakeIntensity, intensity);
   }
@@ -3403,6 +3716,11 @@ export class CombatSimulation {
         : null,
       isOverworld: this.mode === 'world_explore',
       biomeSkyTint: this.mode === 'world_explore' ? this.currentBiomeSkyTint : undefined,
+      secretBossShrines: this.mode === 'world_explore' ? SECRET_WORLD_BOSSES : undefined,
+      defeatedSecretBossIds: Array.from(this.defeatedSecretBossIds),
+      worldEventZones: this.mode === 'world_explore' ? WORLD_EVENT_ZONES : undefined,
+      completedWorldEventIds: Array.from(this.completedWorldEventIds),
+      activeEventZoneId: this.activeEventZone?.def.id,
     };
   }
 
@@ -3476,6 +3794,16 @@ export class CombatSimulation {
       for (const n of this.arena.worldNpcs || []) {
         radarPoints.push({ x: n.x, z: n.z, kind: 'npc' });
       }
+      for (const sb of SECRET_WORLD_BOSSES) {
+        if (!this.defeatedSecretBossIds.has(sb.id)) {
+          radarPoints.push({ x: sb.x, z: sb.z, kind: 'secret_boss' });
+        }
+      }
+      for (const evt of WORLD_EVENT_ZONES) {
+        if (!this.completedWorldEventIds.has(evt.id)) {
+          radarPoints.push({ x: evt.x, z: evt.z, kind: 'event_zone' });
+        }
+      }
     }
     for (const m of this.monsters) {
       if (m.hp <= 0) continue;
@@ -3488,6 +3816,10 @@ export class CombatSimulation {
     }
 
     const missionDef = this.getActiveMissionDef();
+    const activeSecretBoss = this.monsters.find((m) => Boolean(m.secretBossId) && m.hp > 0);
+    const activeEventRem = this.activeEventZone
+      ? this.monsters.filter((m) => m.hp > 0 && m.eventZoneId === this.activeEventZone!.def.id).length
+      : 0;
 
     return {
       hp: p1 ? Math.round(p1.hp) : 0,
@@ -3558,6 +3890,11 @@ export class CombatSimulation {
       activeChunksCount: this.mode === 'world_explore' ? this.activeChunksCount : undefined,
       discoveredChunksCount: this.chunkStreamer ? this.chunkStreamer.getExploredCount() : undefined,
       currentBiomeColor: this.mode === 'world_explore' ? this.currentBiomeColor : undefined,
+      activeSecretBossName: activeSecretBoss?.name,
+      activeEventZoneName: this.activeEventZone?.def.name,
+      activeEventProgress: this.activeEventZone
+        ? `موجة ${this.activeEventZone.wave}/${this.activeEventZone.waveCount} · متبقي ${activeEventRem}`
+        : undefined,
     };
   }
 }

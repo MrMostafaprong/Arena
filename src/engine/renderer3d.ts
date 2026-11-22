@@ -5,8 +5,10 @@ import type {
   MonsterArchetype,
   OverworldNodeDef,
   SceneryPropDef,
+  SecretBossDef,
   WeaponId,
   WorldChestDef,
+  WorldEventZoneDef,
   WorldFastTravelDef,
   WorldNpcDef,
   WorldPortalDef,
@@ -98,6 +100,8 @@ export interface RenderRingVfx {
   color: string;
   alpha: number;
   filled?: boolean;
+  isFusion?: boolean;
+  secondaryColor?: string;
 }
 
 export interface RenderSlashVfx {
@@ -110,6 +114,7 @@ export interface RenderSlashVfx {
   color: string;
   alpha: number;
   tilt: number;
+  critical?: boolean;
 }
 
 export interface RenderLightningVfx {
@@ -179,6 +184,11 @@ export interface RenderScenePayload {
   nearbyInteractable?: { label: string; kind: string } | null;
   isOverworld?: boolean;
   biomeSkyTint?: string;
+  secretBossShrines?: SecretBossDef[];
+  defeatedSecretBossIds?: string[];
+  worldEventZones?: WorldEventZoneDef[];
+  completedWorldEventIds?: string[];
+  activeEventZoneId?: string;
 }
 
 const hexCache = new Map<string, [number, number, number]>();
@@ -1660,6 +1670,26 @@ export class SoftwareRenderer3D {
     ctx.restore();
   }
 
+  private addSecretBossShrineMesh(boss: SecretBossDef, defeated: boolean, time: number) {
+    const col = defeated ? '#475569' : boss.accentColor;
+    const aura = defeated ? '#64748B' : boss.auraColor;
+    this.addTaperedCylinder({ x: boss.x, y: 0.45, z: boss.z }, 2.4, 2.0, 0.9, 0, 8, '#1E293B');
+    this.addBox({ x: boss.x, y: 2.1, z: boss.z }, { x: 1.05, y: 2.8, z: 1.05 }, time * 0.18, '#0F172A');
+    if (!defeated) {
+      const hoverY = 4.35 + Math.sin(time * 3.4) * 0.25;
+      this.addEllipsoid({ x: boss.x, y: hoverY, z: boss.z }, 0.55, 0.95, 0.55, time * 2.4, 6, 4, col, {
+        unlit: true,
+      });
+      this.addTorusRing({ x: boss.x, y: hoverY, z: boss.z }, 1.25, 0.14, time * 1.9, Math.PI / 2, 10, aura, {
+        unlit: true,
+      });
+      this.addTaperedCylinder({ x: boss.x, y: 5.5, z: boss.z }, 0.28, 0.04, 8.5, time, 6, aura, {
+        unlit: true,
+        alpha: 0.34,
+      });
+    }
+  }
+
   public drawGroundRing(ctx: CanvasRenderingContext2D, ring: RenderRingVfx) {
     const segs = 22;
     ctx.save();
@@ -1686,8 +1716,34 @@ export class SoftwareRenderer3D {
       ctx.fill();
     }
     ctx.strokeStyle = ring.color;
-    ctx.lineWidth = 3;
+    ctx.lineWidth = ring.isFusion ? 4.2 : 3;
     ctx.stroke();
+
+    if (ring.isFusion && ring.radius > 0.6) {
+      ctx.beginPath();
+      let startedInner = false;
+      const innerR = ring.radius * 0.72;
+      for (let i = 0; i <= segs; i++) {
+        const a = (i / segs) * Math.PI * 2;
+        const p = this.project({
+          x: ring.x + Math.cos(a) * innerR,
+          y: ring.y + 0.08,
+          z: ring.z + Math.sin(a) * innerR,
+        });
+        if (!p) continue;
+        if (!startedInner) {
+          ctx.moveTo(p.sx, p.sy);
+          startedInner = true;
+        } else {
+          ctx.lineTo(p.sx, p.sy);
+        }
+      }
+      ctx.strokeStyle = ring.secondaryColor || '#FEF08A';
+      ctx.lineWidth = 2.4;
+      ctx.setLineDash([6, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
     ctx.restore();
   }
 
@@ -2751,6 +2807,49 @@ export class SoftwareRenderer3D {
           this.addWorldPortalMesh(portal, scene.time, scene.quality);
         }
       }
+      if (scene.secretBossShrines) {
+        for (const boss of scene.secretBossShrines) {
+          if (playerPos && Math.hypot(boss.x - playerPos.x, boss.z - playerPos.z) > objCull + 20) continue;
+          const defeated = Boolean(scene.defeatedSecretBossIds?.includes(boss.id));
+          this.addSecretBossShrineMesh(boss, defeated, scene.time);
+          if (!defeated) {
+            this.drawGroundRing(ctx, {
+              x: boss.x,
+              y: 0.05,
+              z: boss.z,
+              radius: 4.5 + Math.sin(scene.time * 3.5) * 0.25,
+              maxRadius: 4.8,
+              color: boss.accentColor,
+              alpha: 0.72,
+              isFusion: true,
+              secondaryColor: '#FEF08A',
+            });
+          }
+        }
+      }
+      if (scene.worldEventZones) {
+        for (const evt of scene.worldEventZones) {
+          if (playerPos && Math.hypot(evt.x - playerPos.x, evt.z - playerPos.z) > objCull + 24) continue;
+          const completed = Boolean(scene.completedWorldEventIds?.includes(evt.id));
+          if (completed) continue;
+          const isActive = scene.activeEventZoneId === evt.id;
+          this.drawGroundRing(ctx, {
+            x: evt.x,
+            y: 0.05,
+            z: evt.z,
+            radius: isActive ? evt.radius * 0.75 : 5.2 + Math.sin(scene.time * 4) * 0.35,
+            maxRadius: evt.radius,
+            color: evt.color,
+            alpha: isActive ? 0.85 : 0.65,
+            isFusion: true,
+            secondaryColor: '#FFFFFF',
+          });
+          this.addTaperedCylinder({ x: evt.x, y: 2.2, z: evt.z }, 0.45, 0.08, 4.4, scene.time * 1.5, 6, evt.color, {
+            unlit: true,
+            alpha: 0.45,
+          });
+        }
+      }
     }
 
     if (scene.dashTrails && scene.quality !== 'eco') {
@@ -2938,6 +3037,34 @@ export class SoftwareRenderer3D {
           ctx.restore();
         }
       }
+      if (scene.secretBossShrines) {
+        for (const boss of scene.secretBossShrines) {
+          if (scene.defeatedSecretBossIds?.includes(boss.id)) continue;
+          if (playerPos && Math.hypot(boss.x - playerPos.x, boss.z - playerPos.z) > 38) continue;
+          const p = this.project({ x: boss.x, y: 5.2, z: boss.z });
+          if (!p) continue;
+          ctx.save();
+          ctx.font = '700 12px Tajawal, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillStyle = boss.accentColor;
+          ctx.fillText(`مزار سري: ${boss.name} [G]`, p.sx, p.sy);
+          ctx.restore();
+        }
+      }
+      if (scene.worldEventZones) {
+        for (const evt of scene.worldEventZones) {
+          if (scene.completedWorldEventIds?.includes(evt.id)) continue;
+          if (playerPos && Math.hypot(evt.x - playerPos.x, evt.z - playerPos.z) > 40) continue;
+          const p = this.project({ x: evt.x, y: 4.5, z: evt.z });
+          if (!p) continue;
+          ctx.save();
+          ctx.font = '700 12px Tajawal, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillStyle = evt.color;
+          ctx.fillText(`منطقة حدث: ${evt.name} [G]`, p.sx, p.sy);
+          ctx.restore();
+        }
+      }
     }
 
     // 8. Floating Combat Numbers
@@ -2990,13 +3117,22 @@ export class SoftwareRenderer3D {
     ctx.fillStyle = s.color;
     ctx.fill();
 
-    if (quality !== 'eco') {
+    if (quality !== 'eco' || s.critical) {
       ctx.beginPath();
       ctx.moveTo(outerPts[0][0], outerPts[0][1]);
       for (let i = 1; i < outerPts.length; i++) ctx.lineTo(outerPts[i][0], outerPts[i][1]);
-      ctx.strokeStyle = '#FFFFFF';
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = s.critical ? '#FEF08A' : '#FFFFFF';
+      ctx.lineWidth = s.critical ? 3.4 : 2;
       ctx.stroke();
+
+      if (s.critical) {
+        ctx.beginPath();
+        ctx.moveTo(innerPts[0][0], innerPts[0][1]);
+        for (let i = 1; i < innerPts.length; i++) ctx.lineTo(innerPts[i][0], innerPts[i][1]);
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+      }
     }
     ctx.restore();
   }

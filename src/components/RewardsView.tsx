@@ -2,11 +2,14 @@ import React, { useState } from 'react';
 import {
   Award,
   Briefcase,
+  CalendarClock,
   CheckCircle2,
   Coins,
   Compass,
+  Crown,
   Gem,
   Gift,
+  Medal,
   PackageOpen,
   ShieldAlert,
   Skull,
@@ -15,12 +18,15 @@ import {
 } from 'lucide-react';
 import type { OverworldNodeKind, PlayerProfile } from '../types/game';
 import type { ChestRewardOutcome } from '../hooks/usePlayerProgress';
+import { getAchievementCurrentValue } from '../hooks/usePlayerProgress';
 import {
+  ACHIEVEMENT_DEFS,
   ARENAS,
   MAP_CHALLENGES,
   MONSTER_LIST,
   NPC_JOB_LIST,
   OVERWORLD_MAP,
+  SECRET_WORLD_BOSSES,
   getRankLabel,
   xpForNextLevel,
 } from '../data/gameCatalog';
@@ -29,6 +35,9 @@ interface RewardsViewProps {
   profile: PlayerProfile;
   onClaimQuest: (questId: string) => void;
   onClaimChallenge: (challengeId: string) => boolean;
+  onClaimDaily?: (dailyId: string) => boolean;
+  onClaimAchievement?: (achId: string) => boolean;
+  onEquipTitle?: (title: string) => boolean;
   onOpenChest: (type: 'warrior' | 'mythic') => ChestRewardOutcome | null;
   onBuyChest: (type: 'warrior' | 'mythic') => boolean;
   onAcceptNpcJob: (jobId: string) => { ok: boolean; message: string };
@@ -42,6 +51,9 @@ export const RewardsView: React.FC<RewardsViewProps> = ({
   profile,
   onClaimQuest,
   onClaimChallenge,
+  onClaimDaily,
+  onClaimAchievement,
+  onEquipTitle,
   onOpenChest,
   onBuyChest,
   onAcceptNpcJob,
@@ -151,6 +163,229 @@ export const RewardsView: React.FC<RewardsViewProps> = ({
           </button>
         </section>
       )}
+
+      {/* Daily Rotating Challenges */}
+      <section className="isekai-panel rounded-2xl p-5 sm:p-6 space-y-5">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3.5">
+          <div>
+            <h2 className="font-display text-xl font-bold text-[#F8FAFC] flex items-center gap-2">
+              <CalendarClock className="w-5 h-5 text-[#38BDF8]" />
+              <span>التحديات اليومية المتجددة</span>
+            </h2>
+            <p className="text-xs text-[#94A3B8] mt-1">
+              تتجدد 3 تحديات يومياً تلقائياً بتوقيت جهازك — أكملها لجمع الذهب، الجواهر، أوسمة النقابة، والخبرة.
+            </p>
+          </div>
+          <span className="font-mono-num text-xs px-3 py-1.5 rounded-lg bg-[#0B1220] border border-[#38BDF8]/35 text-[#38BDF8]">
+            تاريخ اليوم: {profile.dailyChallengesDate}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {profile.dailyChallenges.map((dc) => {
+            const pct = Math.min(100, Math.round((dc.current / dc.target) * 100));
+            const ready = dc.current >= dc.target && !dc.claimed;
+            return (
+              <div
+                key={dc.id}
+                className={`p-4 rounded-xl border flex flex-col justify-between gap-3 ${
+                  ready ? 'bg-[#15243D] border-[#38BDF8]' : 'bg-[#0B1220] border-white/10'
+                }`}
+              >
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="font-display text-sm font-bold text-[#F8FAFC]">{dc.title}</h3>
+                    <span className="font-mono-num text-xs text-[#38BDF8] font-bold">
+                      {Math.min(dc.current, dc.target)}/{dc.target}
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#94A3B8] leading-snug">{dc.description}</p>
+                  <div className="w-full h-1.5 bg-[#162136] rounded-full overflow-hidden">
+                    <div
+                      className={`h-full transition-all ${dc.claimed ? 'bg-[#10B981]' : 'bg-[#38BDF8]'}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/5 text-[11px]">
+                  <span className="font-mono-num text-[#E6B85C]">
+                    +{dc.rewardGold}ذ · +{dc.rewardGems}ج · +{dc.rewardMarks}وسام
+                  </span>
+                  {dc.claimed ? (
+                    <span className="text-[#10B981] font-bold flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> مُسلَّم
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={!ready}
+                      onClick={() => {
+                        if (onClaimDaily?.(dc.id)) {
+                          showNotice(`أحسنت! استلمت مكافأة التحدي اليومي «${dc.title}»!`);
+                        }
+                      }}
+                      className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
+                        ready
+                          ? 'bg-[#38BDF8] hover:bg-[#7DD3FC] text-[#0A0F1A] cursor-pointer'
+                          : 'bg-[#1B253A] text-[#64748B] cursor-not-allowed'
+                      }`}
+                    >
+                      استلام
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Permanent Achievements & Exclusive Hero Titles */}
+      <section className="isekai-panel rounded-2xl p-5 sm:p-6 space-y-5">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3.5">
+          <div>
+            <h2 className="font-display text-xl font-bold text-[#F8FAFC] flex items-center gap-2">
+              <Crown className="w-5 h-5 text-[#E6B85C]" />
+              <span>الإنجازات الدائمة والألقاب الحصرية</span>
+            </h2>
+            <p className="text-xs text-[#94A3B8] mt-1">
+              كل إنجاز يمنح لقباً قتالياً حصرياً يُضاف إلى هويتك ويمكن تجهيزه فوراً بجانب اسم بطلك في الميادين والقوائم.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="px-3 py-1.5 rounded-lg bg-[#0B1220] border border-[#E6B85C]/35 text-[#CBD5E1]">
+              اللقب النشط: <strong className="text-[#E6B85C]">«{profile.avatar.title}»</strong>
+            </span>
+            <span className="px-3 py-1.5 rounded-lg bg-[#0B1220] border border-white/10 font-mono-num text-[#38BDF8]">
+              الألقاب المفتوحة: {profile.unlockedTitles.length}
+            </span>
+          </div>
+        </div>
+
+        {/* Secret Boss Unlocked Titles Quick Bar */}
+        {SECRET_WORLD_BOSSES.some((b) => profile.defeatedSecretBossIds.includes(b.id)) && (
+          <div className="p-3.5 rounded-xl bg-[#0B1220] border border-[#A855F7]/30 flex flex-wrap items-center justify-between gap-3">
+            <span className="text-xs font-bold text-[#C084FC]">ألقاب الزعماء السريين المفتوحة:</span>
+            <div className="flex flex-wrap gap-2">
+              {SECRET_WORLD_BOSSES.filter(
+                (b) => b.unlockTitle && profile.unlockedTitles.includes(b.unlockTitle)
+              ).map((b) => {
+                const equipped = profile.avatar.title === b.unlockTitle;
+                return (
+                  <button
+                    key={b.id}
+                    type="button"
+                    onClick={() => {
+                      if (b.unlockTitle && onEquipTitle?.(b.unlockTitle)) {
+                        showNotice(`تم تجهيز اللقب الحصري «${b.unlockTitle}»!`);
+                      }
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
+                      equipped
+                        ? 'bg-[#E6B85C] text-[#0A0F1A] border-[#FDE68A]'
+                        : 'bg-[#161F33] hover:bg-[#223150] text-[#E2E8F0] border-white/15'
+                    }`}
+                  >
+                    {b.unlockTitle} {equipped ? '· مجهّز' : ''}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {ACHIEVEMENT_DEFS.map((ach) => {
+            const val = getAchievementCurrentValue(profile, ach.metric);
+            const pct = Math.min(100, Math.round((val / ach.target) * 100));
+            const claimed = profile.claimedAchievements.includes(ach.id);
+            const ready = val >= ach.target && !claimed;
+            const titleUnlocked = profile.unlockedTitles.includes(ach.rewardTitle);
+            const titleEquipped = profile.avatar.title === ach.rewardTitle;
+
+            return (
+              <div
+                key={ach.id}
+                className={`p-4 rounded-xl border flex flex-col justify-between gap-3 ${
+                  ready
+                    ? 'bg-[#1A243B] border-[#E6B85C]'
+                    : claimed
+                      ? 'bg-[#0E1728] border-[#10B981]/30'
+                      : 'bg-[#0B1220] border-white/10'
+                }`}
+              >
+                <div className="space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-[#E6B85C]">
+                        <Medal className="w-3.5 h-3.5" />
+                        <span>لقب حصري: «{ach.rewardTitle}»</span>
+                      </div>
+                      <h3 className="font-display text-sm sm:text-base font-bold text-[#F8FAFC] mt-0.5">
+                        {ach.title}
+                      </h3>
+                    </div>
+                    <span className="font-mono-num text-xs text-[#CBD5E1] shrink-0">
+                      {Math.min(val, ach.target)}/{ach.target}
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#94A3B8] leading-snug">{ach.description}</p>
+                  <div className="w-full h-1.5 bg-[#162136] rounded-full overflow-hidden">
+                    <div
+                      className={`h-full transition-all ${claimed ? 'bg-[#10B981]' : 'bg-[#E6B85C]'}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/5 text-[11px]">
+                  <span className="font-mono-num text-[#CBD5E1]">
+                    +{ach.rewardGold}ذ · +{ach.rewardGems}ج · +{ach.rewardMarks}وسام
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {titleUnlocked && (
+                      <button
+                        type="button"
+                        disabled={titleEquipped}
+                        onClick={() => {
+                          if (onEquipTitle?.(ach.rewardTitle)) {
+                            showNotice(`تم تجهيز اللقب «${ach.rewardTitle}» على شخصيتك!`);
+                          }
+                        }}
+                        className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
+                          titleEquipped
+                            ? 'bg-[#132A24] text-[#10B981] border border-[#10B981]/40 cursor-default'
+                            : 'bg-[#1C2A45] hover:bg-[#293D63] text-[#F8FAFC] cursor-pointer'
+                        }`}
+                      >
+                        {titleEquipped ? 'اللقب مجهّز' : 'تجهيز اللقب'}
+                      </button>
+                    )}
+                    {!claimed && (
+                      <button
+                        type="button"
+                        disabled={!ready}
+                        onClick={() => {
+                          if (onClaimAchievement?.(ach.id)) {
+                            showNotice(`مبارك! فتحت الإنجاز واللقب الحصري «${ach.rewardTitle}»!`);
+                          }
+                        }}
+                        className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
+                          ready
+                            ? 'bg-[#E6B85C] hover:bg-[#F5D076] text-[#0A0F1A] cursor-pointer'
+                            : 'bg-[#1B253A] text-[#64748B] cursor-not-allowed'
+                        }`}
+                      >
+                        فتح واستلام
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
 
       {/* Guild Work Contracts, Resource Bag & Guild Marks Exchange */}
       <section className="isekai-panel rounded-2xl p-5 sm:p-6 space-y-6">

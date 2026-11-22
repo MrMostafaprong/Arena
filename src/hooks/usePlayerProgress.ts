@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
+  AchievementMetric,
   ArenaId,
   AvatarConfig,
   CameraViewMode,
   ConsumableId,
+  DailyChallengeProgress,
+  DailyMetric,
   DeviceMode,
   GearId,
   GearSlot,
@@ -13,14 +16,18 @@ import type {
   PlayerProfile,
   PowerId,
   PowerSlots,
+  SecretBossDef,
   StarterBlessing,
   StatKey,
   SystemTheme,
   WeaponId,
+  WorldEventZoneDef,
 } from '../types/game';
 import {
+  ACHIEVEMENT_DEFS,
   CONSUMABLES,
   DEFAULT_AVATAR,
+  DEFAULT_TITLES,
   GEAR_ITEMS,
   INITIAL_QUESTS,
   MAP_CHALLENGES,
@@ -30,6 +37,8 @@ import {
   SKILL_SLOT_UNLOCK_COSTS,
   STAT_DEFINITIONS,
   WEAPONS,
+  getTodayDateKey,
+  pickDailyChallengesForDate,
   xpForNextLevel,
 } from '../data/gameCatalog';
 import { audioSynth } from '../engine/audioSynth';
@@ -49,7 +58,65 @@ function detectInitialDeviceMode(): DeviceMode {
   return narrow || coarse ? 'mobile' : 'desktop';
 }
 
+function syncDailyChallenges(
+  date: string | undefined,
+  existing: DailyChallengeProgress[] | undefined
+): { dailyChallengesDate: string; dailyChallenges: DailyChallengeProgress[] } {
+  const today = getTodayDateKey();
+  if (date === today && Array.isArray(existing) && existing.length > 0) {
+    return { dailyChallengesDate: today, dailyChallenges: existing };
+  }
+  return {
+    dailyChallengesDate: today,
+    dailyChallenges: pickDailyChallengesForDate(today),
+  };
+}
+
+function advanceDailyList(
+  challenges: DailyChallengeProgress[],
+  date: string,
+  metric: DailyMetric,
+  delta: number
+): { dailyChallengesDate: string; dailyChallenges: DailyChallengeProgress[] } {
+  const synced = syncDailyChallenges(date, challenges);
+  if (delta <= 0) return synced;
+  return {
+    dailyChallengesDate: synced.dailyChallengesDate,
+    dailyChallenges: synced.dailyChallenges.map((d) =>
+      d.metric === metric ? { ...d, current: Math.min(d.target, d.current + delta) } : d
+    ),
+  };
+}
+
+export function getAchievementCurrentValue(profile: PlayerProfile, metric: AchievementMetric): number {
+  switch (metric) {
+    case 'kills':
+      return profile.totalKills;
+    case 'bossKills':
+      return profile.bossKills;
+    case 'secretBosses':
+      return profile.defeatedSecretBossIds.length;
+    case 'worldEvents':
+      return profile.completedWorldEventIds.length;
+    case 'crits':
+      return profile.critsLanded;
+    case 'fusions':
+      return profile.fusionCasts;
+    case 'chunks':
+      return profile.exploredChunks.length;
+    case 'regions':
+      return profile.discoveredRegions.length;
+    case 'rating':
+      return profile.rating;
+    case 'level':
+      return profile.level;
+    default:
+      return 0;
+  }
+}
+
 function createInitialProfile(): PlayerProfile {
+  const today = getTodayDateKey();
   return {
     avatar: {
       ...DEFAULT_AVATAR,
@@ -67,10 +134,18 @@ function createInitialProfile(): PlayerProfile {
     losses: 0,
     totalKills: 0,
     bossKills: 0,
+    critsLanded: 0,
+    fusionCasts: 0,
     bestCombo: 0,
     missionsCompleted: 0,
     discoveredRegions: ['haven_village'],
     openedWorldChests: [],
+    defeatedSecretBossIds: [],
+    completedWorldEventIds: [],
+    dailyChallengesDate: today,
+    dailyChallenges: pickDailyChallengesForDate(today),
+    claimedAchievements: [],
+    unlockedTitles: DEFAULT_TITLES.map((t) => t.label),
     activeNpcJobs: {},
     completedNpcJobsCount: 0,
     gatheredResources: {
@@ -217,6 +292,19 @@ function loadProfile(): PlayerProfile {
           ? Array.from(new Set(['0,0', ...parsed.exploredChunks])).slice(-800)
           : ['0,0'],
       openedWorldChests: Array.isArray(parsed.openedWorldChests) ? parsed.openedWorldChests : [],
+      critsLanded: typeof parsed.critsLanded === 'number' ? parsed.critsLanded : 0,
+      fusionCasts: typeof parsed.fusionCasts === 'number' ? parsed.fusionCasts : 0,
+      defeatedSecretBossIds: Array.isArray(parsed.defeatedSecretBossIds) ? parsed.defeatedSecretBossIds : [],
+      completedWorldEventIds: Array.isArray(parsed.completedWorldEventIds) ? parsed.completedWorldEventIds : [],
+      ...syncDailyChallenges(parsed.dailyChallengesDate, parsed.dailyChallenges),
+      claimedAchievements: Array.isArray(parsed.claimedAchievements) ? parsed.claimedAchievements : [],
+      unlockedTitles: Array.from(
+        new Set([
+          ...DEFAULT_TITLES.map((t) => t.label),
+          ...(Array.isArray(parsed.unlockedTitles) ? parsed.unlockedTitles : []),
+          ...(parsedAvatar?.title ? [parsedAvatar.title] : []),
+        ])
+      ),
       systemTheme:
         parsed.systemTheme === 'crimson_abyss' || parsed.systemTheme === 'royal_cyan'
           ? parsed.systemTheme
@@ -741,8 +829,10 @@ export function usePlayerProgress() {
           progress: Math.min(def.target, active.progress + 1),
         };
       }
+      const dailySync = advanceDailyList(prev.dailyChallenges, prev.dailyChallengesDate, 'gather', 1);
       return {
         ...prev,
+        ...dailySync,
         gatheredResources: nextResources,
         activeNpcJobs: nextJobs,
       };
@@ -913,8 +1003,20 @@ export function usePlayerProgress() {
         return q;
       });
 
+      let dailySync = advanceDailyList(prev.dailyChallenges, prev.dailyChallengesDate, 'kills', res.kills);
+      if (res.bossKills > 0) {
+        dailySync = advanceDailyList(dailySync.dailyChallenges, dailySync.dailyChallengesDate, 'bossKills', res.bossKills);
+      }
+      if (
+        res.victory &&
+        (res.mode === 'pvp_ranked' || res.mode === 'pvp_online' || res.mode === 'pvp_local' || res.mode === 'unified_clash')
+      ) {
+        dailySync = advanceDailyList(dailySync.dailyChallenges, dailySync.dailyChallengesDate, 'pvpWins', 1);
+      }
+
       return {
         ...prev,
+        ...dailySync,
         gold: prev.gold + res.goldEarned,
         gems: prev.gems + res.gemsEarned,
         guildMarks: prev.guildMarks + Math.floor(res.kills * 1.5) + (res.bossKills > 0 ? 10 : 0),
@@ -1120,8 +1222,10 @@ export function usePlayerProgress() {
       const xpRes = applyXpGain(prev.level, prev.xp, prev.unspentStatPoints, 18);
       const nextChunks = [...prev.exploredChunks, chunkKey];
       const capped = nextChunks.length > 800 ? nextChunks.slice(nextChunks.length - 800) : nextChunks;
+      const dailySync = advanceDailyList(prev.dailyChallenges, prev.dailyChallengesDate, 'chunks', 1);
       return {
         ...prev,
+        ...dailySync,
         gold: prev.gold + 20,
         level: xpRes.level,
         xp: xpRes.xp,
@@ -1129,6 +1233,137 @@ export function usePlayerProgress() {
         exploredChunks: capped,
       };
     });
+    return true;
+  }, []);
+
+  const recordCritLanded = useCallback(() => {
+    setProfile((prev) => {
+      const dailySync = advanceDailyList(prev.dailyChallenges, prev.dailyChallengesDate, 'crits', 1);
+      return {
+        ...prev,
+        ...dailySync,
+        critsLanded: prev.critsLanded + 1,
+      };
+    });
+  }, []);
+
+  const recordFusionCast = useCallback(() => {
+    setProfile((prev) => {
+      const dailySync = advanceDailyList(prev.dailyChallenges, prev.dailyChallengesDate, 'fusions', 1);
+      return {
+        ...prev,
+        ...dailySync,
+        fusionCasts: prev.fusionCasts + 1,
+      };
+    });
+  }, []);
+
+  const recordSecretBossDefeated = useCallback((boss: SecretBossDef): boolean => {
+    const curr = profileRef.current;
+    if (curr.defeatedSecretBossIds.includes(boss.id)) return false;
+    setProfile((prev) => {
+      if (prev.defeatedSecretBossIds.includes(boss.id)) return prev;
+      const xpRes = applyXpGain(prev.level, prev.xp, prev.unspentStatPoints, boss.rewardXp);
+      const dailySync = advanceDailyList(prev.dailyChallenges, prev.dailyChallengesDate, 'bossKills', 1);
+      const nextTitles =
+        boss.unlockTitle && !prev.unlockedTitles.includes(boss.unlockTitle)
+          ? [...prev.unlockedTitles, boss.unlockTitle]
+          : prev.unlockedTitles;
+      return {
+        ...prev,
+        ...dailySync,
+        gold: prev.gold + boss.rewardGold,
+        gems: prev.gems + boss.rewardGems,
+        guildMarks: prev.guildMarks + boss.rewardMarks,
+        bossKills: prev.bossKills + 1,
+        level: xpRes.level,
+        xp: xpRes.xp,
+        unspentStatPoints: xpRes.unspentStatPoints,
+        defeatedSecretBossIds: [...prev.defeatedSecretBossIds, boss.id],
+        unlockedTitles: nextTitles,
+      };
+    });
+    return true;
+  }, []);
+
+  const recordWorldEventCompleted = useCallback((zone: WorldEventZoneDef): boolean => {
+    const curr = profileRef.current;
+    if (curr.completedWorldEventIds.includes(zone.id)) return false;
+    setProfile((prev) => {
+      if (prev.completedWorldEventIds.includes(zone.id)) return prev;
+      const xpRes = applyXpGain(prev.level, prev.xp, prev.unspentStatPoints, zone.rewardXp);
+      return {
+        ...prev,
+        gold: prev.gold + zone.rewardGold,
+        gems: prev.gems + zone.rewardGems,
+        guildMarks: prev.guildMarks + zone.rewardMarks,
+        level: xpRes.level,
+        xp: xpRes.xp,
+        unspentStatPoints: xpRes.unspentStatPoints,
+        completedWorldEventIds: [...prev.completedWorldEventIds, zone.id],
+      };
+    });
+    return true;
+  }, []);
+
+  const claimDailyChallenge = useCallback((dailyId: string): boolean => {
+    const curr = profileRef.current;
+    const synced = syncDailyChallenges(curr.dailyChallengesDate, curr.dailyChallenges);
+    const target = synced.dailyChallenges.find((d) => d.id === dailyId);
+    if (!target || target.claimed || target.current < target.target) return false;
+    audioSynth.playDailyClaim();
+    setProfile((prev) => {
+      const s = syncDailyChallenges(prev.dailyChallengesDate, prev.dailyChallenges);
+      const t = s.dailyChallenges.find((d) => d.id === dailyId);
+      if (!t || t.claimed || t.current < t.target) return prev;
+      const xpRes = applyXpGain(prev.level, prev.xp, prev.unspentStatPoints, t.rewardXp);
+      return {
+        ...prev,
+        gold: prev.gold + t.rewardGold,
+        gems: prev.gems + t.rewardGems,
+        guildMarks: prev.guildMarks + t.rewardMarks,
+        level: xpRes.level,
+        xp: xpRes.xp,
+        unspentStatPoints: xpRes.unspentStatPoints,
+        dailyChallengesDate: s.dailyChallengesDate,
+        dailyChallenges: s.dailyChallenges.map((d) => (d.id === dailyId ? { ...d, claimed: true } : d)),
+      };
+    });
+    return true;
+  }, []);
+
+  const claimAchievement = useCallback((achId: string): boolean => {
+    const ach = ACHIEVEMENT_DEFS.find((a) => a.id === achId);
+    const curr = profileRef.current;
+    if (!ach || curr.claimedAchievements.includes(achId)) return false;
+    if (getAchievementCurrentValue(curr, ach.metric) < ach.target) return false;
+    audioSynth.playAchievementUnlock();
+    setProfile((prev) => {
+      if (prev.claimedAchievements.includes(achId)) return prev;
+      if (getAchievementCurrentValue(prev, ach.metric) < ach.target) return prev;
+      const nextTitles = prev.unlockedTitles.includes(ach.rewardTitle)
+        ? prev.unlockedTitles
+        : [...prev.unlockedTitles, ach.rewardTitle];
+      return {
+        ...prev,
+        gold: prev.gold + ach.rewardGold,
+        gems: prev.gems + ach.rewardGems,
+        guildMarks: prev.guildMarks + ach.rewardMarks,
+        claimedAchievements: [...prev.claimedAchievements, achId],
+        unlockedTitles: nextTitles,
+      };
+    });
+    return true;
+  }, []);
+
+  const equipTitle = useCallback((title: string): boolean => {
+    const curr = profileRef.current;
+    if (!curr.unlockedTitles.includes(title)) return false;
+    audioSynth.playDailyClaim();
+    setProfile((prev) => ({
+      ...prev,
+      avatar: { ...prev.avatar, title },
+    }));
     return true;
   }, []);
 
@@ -1186,6 +1421,13 @@ export function usePlayerProgress() {
     recordRegionDiscovery,
     recordWorldChestOpened,
     recordChunkExplored,
+    recordCritLanded,
+    recordFusionCast,
+    recordSecretBossDefeated,
+    recordWorldEventCompleted,
+    claimDailyChallenge,
+    claimAchievement,
+    equipTitle,
     claimQuest,
     claimMapChallenge,
     openChest,

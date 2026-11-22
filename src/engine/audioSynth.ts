@@ -154,6 +154,115 @@ class CombatAudioSynth {
     osc.start(now);
     osc.stop(now + 0.4);
   }
+
+  public playCriticalSlash() {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+
+    // Punchy sub thump + metallic resonance
+    const sub = ctx.createOscillator();
+    const subGain = ctx.createGain();
+    sub.type = 'sawtooth';
+    sub.frequency.setValueAtTime(320, now);
+    sub.frequency.exponentialRampToValueAtTime(42, now + 0.22);
+    subGain.gain.setValueAtTime(0.16, now);
+    subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+    sub.connect(subGain);
+    subGain.connect(ctx.destination);
+    sub.start(now);
+    sub.stop(now + 0.25);
+
+    [980, 1480].forEach((freq, idx) => {
+      const shimmer = ctx.createOscillator();
+      const sGain = ctx.createGain();
+      shimmer.type = 'triangle';
+      shimmer.frequency.setValueAtTime(freq, now + idx * 0.015);
+      shimmer.frequency.exponentialRampToValueAtTime(freq * 1.45, now + 0.19);
+      sGain.gain.setValueAtTime(0.075, now + idx * 0.015);
+      sGain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+      shimmer.connect(sGain);
+      sGain.connect(ctx.destination);
+      shimmer.start(now + idx * 0.015);
+      shimmer.stop(now + 0.21);
+    });
+  }
+
+  public playFusionCast() {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const chord = [196, 293.66, 392, 587.33];
+    chord.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = idx % 2 === 0 ? 'sawtooth' : 'triangle';
+      osc.frequency.setValueAtTime(freq * 0.85, now + idx * 0.025);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.9, now + 0.44);
+      gain.gain.setValueAtTime(0.072, now + idx * 0.025);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.46);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + idx * 0.025);
+      osc.stop(now + 0.48);
+    });
+  }
+
+  public playWorldEventHorn() {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    [130.81, 196, 261.63].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(freq, now + idx * 0.06);
+      osc.frequency.linearRampToValueAtTime(freq * 1.04, now + 0.45);
+      gain.gain.setValueAtTime(0.065, now + idx * 0.06);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.62);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + idx * 0.06);
+      osc.stop(now + 0.65);
+    });
+  }
+
+  public playAchievementUnlock() {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const fanfare = [523.25, 659.25, 783.99, 1046.5, 1318.5];
+    fanfare.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, now + i * 0.07);
+      gain.gain.setValueAtTime(0.085, now + i * 0.07);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.07 + 0.34);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + i * 0.07);
+      osc.stop(now + i * 0.07 + 0.36);
+    });
+  }
+
+  public playDailyClaim() {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    [587.33, 880, 1174.66].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + i * 0.055);
+      gain.gain.setValueAtTime(0.075, now + i * 0.055);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.055 + 0.22);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + i * 0.055);
+      osc.stop(now + i * 0.055 + 0.24);
+    });
+  }
 }
 
 export const audioSynth = new CombatAudioSynth();

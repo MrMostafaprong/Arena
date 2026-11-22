@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { BookOpen, Compass, Shield, Sparkles, Swords, X } from 'lucide-react';
 import type { StarterBlessing } from '../types/game';
+import { BUNDLED_IMAGES } from '../data/bundledAssets';
 
 interface StoryPrologueModalProps {
   open: boolean;
@@ -92,7 +93,7 @@ export const StoryPrologueModal: React.FC<StoryPrologueModalProps> = ({
         {/* Dramatic Visual Banner */}
         <div className="relative h-36 sm:h-52 landscape-phone-story-banner bg-[#0B1120] overflow-hidden shrink-0">
           <img
-            src="/src/assets/images/isekai_story_awakening_1795258483747.jpg"
+            src={BUNDLED_IMAGES.storyAwakening}
             alt="بوابة استدعاء إيثيريا"
             referrerPolicy="no-referrer"
             className="w-full h-full object-cover object-center"

@@ -482,6 +482,97 @@ export interface RivalChampion {
 
 export type StarterBlessing = 'vanguard' | 'arcane' | 'fortune';
 
+export type ConnectionMode = 'live_server' | 'static_local' | 'connecting';
+
+export interface SecretBossDef {
+  id: string;
+  name: string;
+  title: string;
+  archetype: MonsterArchetype;
+  hpMult: number;
+  dmgMult: number;
+  scaleMult: number;
+  chunkX: number;
+  chunkZ: number;
+  x: number;
+  z: number;
+  accentColor: string;
+  auraColor: string;
+  rewardGold: number;
+  rewardGems: number;
+  rewardMarks: number;
+  rewardXp: number;
+  unlockTitle?: string;
+}
+
+export interface WorldEventZoneDef {
+  id: string;
+  name: string;
+  kind: 'ether_storm' | 'meteor_rift' | 'blood_altar';
+  description: string;
+  chunkX: number;
+  chunkZ: number;
+  x: number;
+  z: number;
+  radius: number;
+  color: string;
+  waveCount: number;
+  rewardGold: number;
+  rewardGems: number;
+  rewardMarks: number;
+  rewardXp: number;
+}
+
+export type DailyMetric = 'kills' | 'crits' | 'fusions' | 'bossKills' | 'chunks' | 'gather' | 'pvpWins';
+
+export interface DailyChallengeDef {
+  id: string;
+  title: string;
+  description: string;
+  metric: DailyMetric;
+  target: number;
+  rewardGold: number;
+  rewardGems: number;
+  rewardMarks: number;
+  rewardXp: number;
+}
+
+export interface DailyChallengeProgress extends DailyChallengeDef {
+  current: number;
+  claimed: boolean;
+}
+
+export type AchievementMetric =
+  | 'kills'
+  | 'bossKills'
+  | 'secretBosses'
+  | 'worldEvents'
+  | 'crits'
+  | 'fusions'
+  | 'chunks'
+  | 'regions'
+  | 'rating'
+  | 'level';
+
+export interface AchievementDef {
+  id: string;
+  title: string;
+  description: string;
+  metric: AchievementMetric;
+  target: number;
+  rewardTitle: string;
+  rewardGold: number;
+  rewardGems: number;
+  rewardMarks: number;
+}
+
+export interface TitleDef {
+  id: string;
+  label: string;
+  source: string;
+  accentColor: string;
+}
+
 export interface PlayerProfile {
   avatar: AvatarConfig;
   gold: number;
@@ -494,6 +585,8 @@ export interface PlayerProfile {
   losses: number;
   totalKills: number;
   bossKills: number;
+  critsLanded: number;
+  fusionCasts: number;
   bestCombo: number;
   missionsCompleted: number;
   unspentStatPoints: number;
@@ -513,6 +606,12 @@ export interface PlayerProfile {
   discoveredRegions: string[];
   exploredChunks: string[];
   openedWorldChests: string[];
+  defeatedSecretBossIds: string[];
+  completedWorldEventIds: string[];
+  dailyChallengesDate: string;
+  dailyChallenges: DailyChallengeProgress[];
+  claimedAchievements: string[];
+  unlockedTitles: string[];
   activeNpcJobs: Record<string, { progress: number; completed: boolean }>;
   completedNpcJobsCount: number;
   gatheredResources: Record<OverworldNodeKind, number>;
@@ -534,6 +633,10 @@ export interface MatchResult {
   victory: boolean;
   kills: number;
   bossKills: number;
+  critsLanded?: number;
+  fusionCasts?: number;
+  secretBossesDefeated?: number;
+  worldEventsCompleted?: number;
   waveReached: number;
   maxCombo: number;
   damageDealt: number;

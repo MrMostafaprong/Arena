@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { RefreshCw, Swords, Trophy, Users, Wifi, WifiOff } from 'lucide-react';
+import { RefreshCw, Server, Swords, Trophy, Users, Wifi, WifiOff } from 'lucide-react';
 import type {
   ArenaId,
   ChatMessage,
+  ConnectionMode,
   LeaderboardEntry,
   OnlineRoomSummary,
   PlayerProfile,
@@ -14,6 +15,9 @@ import { SystemChatPanel } from './SystemChatPanel';
 interface PvpCompetitionViewProps {
   profile: PlayerProfile;
   connected: boolean;
+  connectionMode?: ConnectionMode;
+  customServerUrl?: string;
+  onSaveServerUrl?: (url: string) => void;
   onlinePlayers: number;
   rooms: OnlineRoomSummary[];
   activeRoom: OnlineRoomSummary | null;
@@ -38,6 +42,9 @@ interface PvpCompetitionViewProps {
 export const PvpCompetitionView: React.FC<PvpCompetitionViewProps> = ({
   profile,
   connected,
+  connectionMode = connected ? 'live_server' : 'static_local',
+  customServerUrl = '',
+  onSaveServerUrl,
   onlinePlayers,
   rooms,
   activeRoom,
@@ -57,6 +64,12 @@ export const PvpCompetitionView: React.FC<PvpCompetitionViewProps> = ({
   const [joinCode, setJoinCode] = useState('');
   const [localArena, setLocalArena] = useState<ArenaId>('magma_caldera');
   const [localP2Id, setLocalP2Id] = useState<string>(RIVAL_CHAMPIONS[1].id);
+  const [serverDraft, setServerDraft] = useState(customServerUrl);
+  const [showServerConfig, setShowServerConfig] = useState(false);
+
+  useEffect(() => {
+    setServerDraft(customServerUrl);
+  }, [customServerUrl]);
 
   useEffect(() => {
     onRefreshRooms();
@@ -76,14 +89,30 @@ export const PvpCompetitionView: React.FC<PvpCompetitionViewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-3 text-xs">
+        <div className="flex flex-wrap items-center gap-3 text-xs">
           <span
             className={`inline-flex items-center gap-1.5 font-medium ${
-              connected ? 'text-[#10B981]' : 'text-[#F87171]'
+              connected
+                ? 'text-[#10B981]'
+                : connectionMode === 'connecting'
+                  ? 'text-[#F59E0B]'
+                  : 'text-[#38BDF8]'
             }`}
           >
-            {connected ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
-            <span>{connected ? `متصل بخادم الساحة (${onlinePlayers} لاعب)` : 'جارٍ الاتصال بالخادم...'}</span>
+            {connected ? (
+              <Wifi className="w-4 h-4" />
+            ) : connectionMode === 'connecting' ? (
+              <WifiOff className="w-4 h-4" />
+            ) : (
+              <Wifi className="w-4 h-4" />
+            )}
+            <span>
+              {connected
+                ? `متصل بالخادم الحي (${onlinePlayers} لاعب)`
+                : connectionMode === 'connecting'
+                  ? 'جارٍ الاتصال بالخادم...'
+                  : 'الوضع الساكن / المحلي (GitHub Pages جاهز)'}
+            </span>
           </span>
           <span className="text-[#566173]">·</span>
           <span className="text-[#CBD5E1]">
@@ -92,8 +121,60 @@ export const PvpCompetitionView: React.FC<PvpCompetitionViewProps> = ({
               {profile.rating} ({getRankLabel(profile.rating)})
             </strong>
           </span>
+          {onSaveServerUrl && (
+            <button
+              type="button"
+              onClick={() => setShowServerConfig((v) => !v)}
+              className="px-2.5 py-1 rounded-md bg-[#121C30] hover:bg-[#1B2B49] border border-white/15 text-[#CBD5E1] flex items-center gap-1.5 cursor-pointer"
+            >
+              <Server className="w-3.5 h-3.5 text-[#38BDF8]" />
+              <span>إعداد الخادم</span>
+            </button>
+          )}
         </div>
       </div>
+
+      {showServerConfig && onSaveServerUrl && (
+        <section className="system-window rounded-xl p-4 sm:p-5 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="font-display text-sm sm:text-base font-bold text-[#F1F5F9]">
+                ربط خادم الأونلاين الخارجي (اختياري للنشر الساكن)
+              </h2>
+              <p className="text-xs text-[#94A3B8] mt-0.5">
+                على GitHub Pages تعمل التحديات المصنفة، المبارزة المحلية، والدردشة عبر البث المحلي تلقائياً. يمكنك إدخال رابط خادم Node/WebSocket خارجي متى شئت.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <input
+              type="url"
+              dir="ltr"
+              value={serverDraft}
+              onChange={(e) => setServerDraft(e.target.value)}
+              placeholder="https://your-arena-server.onrender.com"
+              className="flex-1 min-w-[220px] px-3.5 py-2 text-xs sm:text-sm bg-[#0A0F1A] border border-white/15 rounded-lg text-[#F1F5F9] focus:outline-none focus:border-[#38BDF8]"
+            />
+            <button
+              type="button"
+              onClick={() => onSaveServerUrl(serverDraft)}
+              className="px-4 py-2 text-xs font-bold text-[#0A0F1A] bg-[#38BDF8] hover:bg-[#7DD3FC] rounded-lg cursor-pointer whitespace-nowrap"
+            >
+              حفظ والاتصال
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setServerDraft('');
+                onSaveServerUrl('');
+              }}
+              className="px-3.5 py-2 text-xs font-semibold text-[#CBD5E1] bg-[#16223A] hover:bg-[#203050] border border-white/10 rounded-lg cursor-pointer whitespace-nowrap"
+            >
+              الوضع المحلي التلقائي
+            </button>
+          </div>
+        </section>
+      )}
 
       {roomError && (
         <div className="px-4 py-2.5 text-sm text-[#FCA5A5] bg-[#2B1517] border border-[#EF4444]/40 rounded-lg">
@@ -297,6 +378,7 @@ export const PvpCompetitionView: React.FC<PvpCompetitionViewProps> = ({
           playerName={profile.avatar.name}
           playerRating={profile.rating}
           connected={connected}
+          connectionMode={connectionMode}
           activeRoom={activeRoom}
           worldMessages={worldMessages}
           roomMessages={roomMessages}
@@ -358,8 +440,15 @@ export const PvpCompetitionView: React.FC<PvpCompetitionViewProps> = ({
                       #{idx + 1}
                     </td>
                     <td className="py-3.5 px-4 font-bold text-[#F1F5F9]">
-                      {entry.name}
-                      {isSelf && <span className="text-xs font-normal text-[#E6B85C] mr-2">(أنت)</span>}
+                      <span>{entry.name}</span>
+                      {isSelf && (
+                        <>
+                          <span className="text-xs font-normal text-[#E6B85C] mr-2">(أنت)</span>
+                          <span className="text-[11px] font-medium text-[#38BDF8] mr-1.5">
+                            · «{profile.avatar.title}»
+                          </span>
+                        </>
+                      )}
                     </td>
                     <td className="py-3.5 px-4 text-xs text-[#CBD5E1]">
                       {WEAPONS[entry.weaponId]?.name || 'نصل الطليعة'}

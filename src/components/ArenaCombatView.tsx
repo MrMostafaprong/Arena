@@ -37,6 +37,7 @@ import type {
   AvatarConfig,
   CameraViewMode,
   ChatMessage,
+  ConnectionMode,
   ConsumableId,
   DeviceMode,
   GameMode,
@@ -47,15 +48,19 @@ import type {
   OverworldNodeKind,
   PlayerProfile,
   RivalChampion,
+  SecretBossDef,
   SystemTheme,
   WorldChestDef,
+  WorldEventZoneDef,
 } from '../types/game';
 import {
   ARENAS,
   NPC_JOB_LIST,
   OVERWORLD_MAP,
   POWERS,
+  SECRET_WORLD_BOSSES,
   WEAPONS,
+  WORLD_EVENT_ZONES,
 } from '../data/gameCatalog';
 import { SoftwareRenderer3D } from '../engine/renderer3d';
 import { CombatSimulation, HudSnapshot } from '../engine/combatSimulation';
@@ -76,6 +81,7 @@ interface ArenaCombatViewProps {
   systemTheme?: SystemTheme;
   onToggleSystemTheme?: () => void;
   chatConnected?: boolean;
+  chatMode?: ConnectionMode;
   worldMessages?: ChatMessage[];
   roomMessages?: ChatMessage[];
   onSendChat?: (
@@ -107,6 +113,10 @@ interface ArenaCombatViewProps {
   onOpenWorldChest?: (chest: WorldChestDef) => void;
   onGatherNode?: (kind: OverworldNodeKind, label: string) => void;
   onExploreChunk?: (chunkKey: string) => void;
+  onDefeatSecretBoss?: (boss: SecretBossDef) => void;
+  onCompleteWorldEvent?: (zone: WorldEventZoneDef) => void;
+  onCritLanded?: () => void;
+  onFusionCast?: () => void;
   onAcceptNpcJob?: (jobId: string) => { ok: boolean; message: string };
   onCompleteNpcJob?: (jobId: string) => { ok: boolean; message: string };
   onSellSingleResource?: (kind: OverworldNodeKind) => { ok: boolean; message: string };
@@ -162,6 +172,7 @@ export const ArenaCombatView: React.FC<ArenaCombatViewProps> = ({
   systemTheme = 'royal_cyan',
   onToggleSystemTheme,
   chatConnected = false,
+  chatMode,
   worldMessages = [],
   roomMessages = [],
   onSendChat,
@@ -178,6 +189,10 @@ export const ArenaCombatView: React.FC<ArenaCombatViewProps> = ({
   onOpenWorldChest,
   onGatherNode,
   onExploreChunk,
+  onDefeatSecretBoss,
+  onCompleteWorldEvent,
+  onCritLanded,
+  onFusionCast,
   onAcceptNpcJob,
   onCompleteNpcJob,
   onSellSingleResource,
@@ -423,9 +438,15 @@ export const ArenaCombatView: React.FC<ArenaCombatViewProps> = ({
       onConsumeItem,
       initialDiscoveredRegions: profile.discoveredRegions,
       initialOpenedChests: profile.openedWorldChests,
+      initialDefeatedSecretBossIds: profile.defeatedSecretBossIds,
+      initialCompletedWorldEventIds: profile.completedWorldEventIds,
       onDiscoverRegion,
       onOpenWorldChest,
       onGatherNode,
+      onDefeatSecretBoss,
+      onCompleteWorldEvent,
+      onCritLanded,
+      onFusionCast,
       onOpenNpcWork: (npcId) => {
         setNpcNotice('');
         setActiveNpcId(npcId);
@@ -914,6 +935,35 @@ export const ArenaCombatView: React.FC<ArenaCombatViewProps> = ({
                     />
                   );
                 }
+                if (pt.kind === 'secret_boss') {
+                  return (
+                    <rect
+                      key={`r_${idx}`}
+                      x={pt.x - 1.8 * radarDotScale}
+                      y={pt.z - 1.8 * radarDotScale}
+                      width={3.6 * radarDotScale}
+                      height={3.6 * radarDotScale}
+                      transform={`rotate(45 ${pt.x} ${pt.z})`}
+                      fill="#A855F7"
+                      stroke="#FDE68A"
+                      strokeWidth={0.5}
+                    />
+                  );
+                }
+                if (pt.kind === 'event_zone') {
+                  return (
+                    <circle
+                      key={`r_${idx}`}
+                      cx={pt.x}
+                      cy={pt.z}
+                      r={2.5 * radarDotScale}
+                      fill="#38BDF8"
+                      fillOpacity={0.22}
+                      stroke="#38BDF8"
+                      strokeWidth={0.55}
+                    />
+                  );
+                }
                 if (pt.kind === 'rival') {
                   return (
                     <circle
@@ -987,6 +1037,25 @@ export const ArenaCombatView: React.FC<ArenaCombatViewProps> = ({
               <span className="font-mono-num text-[#38BDF8] font-bold shrink-0">
                 {hud.activeMission.progress}/{hud.activeMission.target}
               </span>
+            </div>
+          )}
+
+          {hud.activeEventZoneName && (
+            <div className="bg-[#0B101D]/88 backdrop-blur-md border border-[#38BDF8]/45 rounded-lg px-2.5 py-0.5 flex items-center gap-2 text-[10px] sm:text-[11px] max-w-full">
+              <Sparkles className="w-3 h-3 text-[#38BDF8] shrink-0" />
+              <span className="font-bold text-[#E0F2FE] truncate">{hud.activeEventZoneName}</span>
+              {hud.activeEventProgress && (
+                <span className="font-mono-num text-[#38BDF8] font-bold shrink-0">
+                  {hud.activeEventProgress}
+                </span>
+              )}
+            </div>
+          )}
+
+          {hud.activeSecretBossName && !hud.bossName && (
+            <div className="bg-[#181028]/88 backdrop-blur-md border border-[#A855F7]/50 rounded-lg px-2.5 py-0.5 flex items-center gap-1.5 text-[10px] sm:text-[11px] max-w-full">
+              <Flame className="w-3 h-3 text-[#E879F9] shrink-0" />
+              <span className="font-bold text-[#F3E8FF] truncate">مزار زعيم سري: {hud.activeSecretBossName}</span>
             </div>
           )}
 
@@ -1767,6 +1836,40 @@ export const ArenaCombatView: React.FC<ArenaCombatViewProps> = ({
                         />
                       );
                     })}
+                    {WORLD_EVENT_ZONES.map((ez) => {
+                      const done = profile.completedWorldEventIds.includes(ez.id);
+                      return (
+                        <g key={`ez_${ez.id}`}>
+                          <circle
+                            cx={ez.x}
+                            cy={ez.z}
+                            r={Math.max(220, ez.radius)}
+                            fill={done ? '#475569' : ez.color}
+                            fillOpacity={done ? 0.08 : 0.2}
+                            stroke={done ? '#64748B' : '#38BDF8'}
+                            strokeWidth={45}
+                            strokeDasharray="110 70"
+                          />
+                        </g>
+                      );
+                    })}
+                    {SECRET_WORLD_BOSSES.map((sb) => {
+                      const defeated = profile.defeatedSecretBossIds.includes(sb.id);
+                      return (
+                        <rect
+                          key={`sb_${sb.id}`}
+                          x={sb.x - 165}
+                          y={sb.z - 165}
+                          width={330}
+                          height={330}
+                          transform={`rotate(45 ${sb.x} ${sb.z})`}
+                          fill={defeated ? '#475569' : '#A855F7'}
+                          stroke={defeated ? '#64748B' : '#FDE68A'}
+                          strokeWidth={48}
+                          opacity={defeated ? 0.55 : 1}
+                        />
+                      );
+                    })}
                     <circle cx={hud.playerX} cy={hud.playerZ} r={320} fill="#E6B85C" fillOpacity={0.28} />
                     <circle cx={hud.playerX} cy={hud.playerZ} r={140} fill="#F8FAFC" stroke="#E6B85C" strokeWidth={55} />
                   </svg>
@@ -1781,6 +1884,12 @@ export const ArenaCombatView: React.FC<ArenaCombatViewProps> = ({
                   </span>
                   <span className="flex items-center gap-1">
                     <span className="w-2.5 h-2.5 rounded-sm bg-[#E6B85C]" /> صندوق كنز
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rotate-45 bg-[#A855F7] border border-[#FDE68A]" /> زعيم سري
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rounded-full border-2 border-[#38BDF8]" /> منطقة حدث
                   </span>
                 </div>
               </div>
@@ -2033,6 +2142,7 @@ export const ArenaCombatView: React.FC<ArenaCombatViewProps> = ({
             playerName={profile.avatar.name}
             playerRating={profile.rating}
             connected={chatConnected}
+            connectionMode={chatMode}
             activeRoom={onlineRoom}
             worldMessages={worldMessages}
             roomMessages={roomMessages}

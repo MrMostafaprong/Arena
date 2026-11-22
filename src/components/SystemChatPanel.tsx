@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { MessageSquare, Send, Sparkles, Users, Wifi, WifiOff, X, Zap } from 'lucide-react';
-import type { ChatMessage, OnlineRoomSummary } from '../types/game';
+import type { ChatMessage, ConnectionMode, OnlineRoomSummary } from '../types/game';
 import { QUICK_CHAT_PHRASES, getRankLabel } from '../data/gameCatalog';
 
 interface SystemChatPanelProps {
   playerName: string;
   playerRating: number;
   connected: boolean;
+  connectionMode?: ConnectionMode;
   activeRoom?: OnlineRoomSummary | null;
   worldMessages: ChatMessage[];
   roomMessages: ChatMessage[];
@@ -25,6 +26,7 @@ export const SystemChatPanel: React.FC<SystemChatPanelProps> = ({
   playerName,
   playerRating,
   connected,
+  connectionMode,
   activeRoom,
   worldMessages,
   roomMessages,
@@ -35,6 +37,9 @@ export const SystemChatPanel: React.FC<SystemChatPanelProps> = ({
   const [channel, setChannel] = useState<'world' | 'room'>(activeRoom ? 'room' : 'world');
   const [draft, setDraft] = useState('');
   const feedRef = useRef<HTMLDivElement | null>(null);
+
+  const effectiveMode: ConnectionMode = connectionMode || (connected ? 'live_server' : 'static_local');
+  const chatReady = connected || effectiveMode === 'static_local';
 
   useEffect(() => {
     if (activeRoom) {
@@ -57,14 +62,14 @@ export const SystemChatPanel: React.FC<SystemChatPanelProps> = ({
   const handleSend = (e?: React.FormEvent) => {
     e?.preventDefault();
     const clean = draft.trim();
-    if (!clean || !connected) return;
+    if (!clean || !chatReady) return;
     if (channel === 'room' && !activeRoom) return;
     onSendChat(channel, clean, playerName, senderRank, false);
     setDraft('');
   };
 
   const handleQuick = (phrase: string) => {
-    if (!connected) return;
+    if (!chatReady) return;
     if (channel === 'room' && !activeRoom) return;
     onSendChat(channel, phrase, playerName, senderRank, true);
   };
@@ -88,9 +93,13 @@ export const SystemChatPanel: React.FC<SystemChatPanelProps> = ({
                 <span className="flex items-center gap-1 text-[#10B981]">
                   <Wifi className="w-3 h-3" /> متصل بالخادم الحي
                 </span>
+              ) : effectiveMode === 'connecting' ? (
+                <span className="flex items-center gap-1 text-[#F59E0B]">
+                  <WifiOff className="w-3 h-3" /> جارٍ الفحص والاتصال...
+                </span>
               ) : (
-                <span className="flex items-center gap-1 text-[#F87171]">
-                  <WifiOff className="w-3 h-3" /> جارٍ إعادة الاتصال...
+                <span className="flex items-center gap-1 text-[#38BDF8]">
+                  <Wifi className="w-3 h-3" /> بث محلي نشط (بدون خادم)
                 </span>
               )}
               {activeRoom && (
@@ -216,7 +225,7 @@ export const SystemChatPanel: React.FC<SystemChatPanelProps> = ({
           <button
             key={phrase}
             type="button"
-            disabled={!connected || (channel === 'room' && !activeRoom)}
+            disabled={!chatReady || (channel === 'room' && !activeRoom)}
             onClick={() => handleQuick(phrase)}
             className="px-2 py-1 text-[10px] sm:text-[11px] font-semibold rounded-md bg-[#111A2E] hover:bg-[#192846] disabled:opacity-40 text-[#CBD5E1] hover:text-[#F8FAFC] border border-white/10 transition-colors cursor-pointer whitespace-nowrap"
           >
@@ -234,7 +243,7 @@ export const SystemChatPanel: React.FC<SystemChatPanelProps> = ({
           type="text"
           value={draft}
           maxLength={180}
-          disabled={!connected || (channel === 'room' && !activeRoom)}
+          disabled={!chatReady || (channel === 'room' && !activeRoom)}
           onChange={(e) => setDraft(e.target.value)}
           placeholder={
             channel === 'room'
@@ -245,7 +254,7 @@ export const SystemChatPanel: React.FC<SystemChatPanelProps> = ({
         />
         <button
           type="submit"
-          disabled={!connected || !draft.trim() || (channel === 'room' && !activeRoom)}
+          disabled={!chatReady || !draft.trim() || (channel === 'room' && !activeRoom)}
           className="min-h-[42px] px-4 py-2 text-xs font-bold system-btn-primary disabled:opacity-40 rounded-lg flex items-center gap-1.5 shrink-0 cursor-pointer"
         >
           <Send className="w-3.5 h-3.5" />

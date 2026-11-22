@@ -49,6 +49,13 @@ export function App() {
     recordRegionDiscovery,
     recordWorldChestOpened,
     recordChunkExplored,
+    recordCritLanded,
+    recordFusionCast,
+    recordSecretBossDefeated,
+    recordWorldEventCompleted,
+    claimDailyChallenge,
+    claimAchievement,
+    equipTitle,
     openChest,
     buyChest,
     setSystemTheme,
@@ -142,6 +149,7 @@ export function App() {
       rating: nextRating,
       wins: nextWins,
       weaponId: profile.avatar.weaponId,
+      rankTitle: profile.avatar.title,
     });
   };
 
@@ -208,6 +216,7 @@ export function App() {
         <AvatarForge
           profile={profile}
           onSaveAvatar={(next) => updateAvatar(next, true)}
+          onEquipTitle={equipTitle}
           onAllocateStat={allocateStat}
           onUnlockOrEquipPower={unlockOrEquipPower}
           onUnlockNextSkillSlot={unlockNextSkillSlot}
@@ -235,6 +244,9 @@ export function App() {
           profile={profile}
           onClaimQuest={claimQuest}
           onClaimChallenge={claimMapChallenge}
+          onClaimDaily={claimDailyChallenge}
+          onClaimAchievement={claimAchievement}
+          onEquipTitle={equipTitle}
           onOpenChest={openChest}
           onBuyChest={buyChest}
           onAcceptNpcJob={acceptNpcJob}
@@ -249,6 +261,9 @@ export function App() {
         <PvpCompetitionView
           profile={profile}
           connected={mp.connected}
+          connectionMode={mp.connectionMode}
+          customServerUrl={mp.customServerUrl}
+          onSaveServerUrl={mp.setCustomServerUrl}
           onlinePlayers={mp.onlinePlayers}
           rooms={mp.rooms}
           activeRoom={mp.activeRoom}
@@ -279,6 +294,7 @@ export function App() {
           systemTheme={profile.systemTheme}
           onToggleSystemTheme={handleToggleSystemTheme}
           chatConnected={mp.connected}
+          chatMode={mp.connectionMode}
           worldMessages={mp.worldMessages}
           roomMessages={mp.roomMessages}
           onSendChat={mp.sendChatMessage}
@@ -299,6 +315,10 @@ export function App() {
           }
           onGatherNode={(kind) => recordResourceGathered(kind)}
           onExploreChunk={(chunkKey) => recordChunkExplored(chunkKey)}
+          onDefeatSecretBoss={recordSecretBossDefeated}
+          onCompleteWorldEvent={recordWorldEventCompleted}
+          onCritLanded={recordCritLanded}
+          onFusionCast={recordFusionCast}
           onAcceptNpcJob={acceptNpcJob}
           onCompleteNpcJob={completeNpcJob}
           onSellSingleResource={sellSingleResource}

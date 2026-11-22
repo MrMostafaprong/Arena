@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, Dices, Minus, Plus, Radar, RotateCcw, Wand2 } from 'lucide-react';
+import { Check, Crown, Dices, Minus, Plus, Radar, RotateCcw, Wand2 } from 'lucide-react';
 import type {
   ArmorStyle,
   AuraStyle,
@@ -14,6 +14,7 @@ import type {
 import {
   ARMOR_SWATCHES,
   DEFAULT_AVATAR,
+  EXCLUSIVE_TITLES,
   GEAR_ITEMS,
   GLOW_SWATCHES,
   SKIN_TONES,
@@ -27,6 +28,7 @@ import { SkillNetworkAndFusionPanel } from './SkillNetworkAndFusionPanel';
 interface AvatarForgeProps {
   profile: PlayerProfile;
   onSaveAvatar: (avatar: AvatarConfig) => void;
+  onEquipTitle?: (title: string) => boolean;
   onAllocateStat: (stat: StatKey, delta: 1 | -1) => void;
   onUnlockOrEquipPower: (
     powerId: PowerId,
@@ -184,6 +186,7 @@ const RANDOM_NAMES = [
 export const AvatarForge: React.FC<AvatarForgeProps> = ({
   profile,
   onSaveAvatar,
+  onEquipTitle,
   onAllocateStat,
   onUnlockOrEquipPower,
   onUnlockNextSkillSlot,
@@ -490,6 +493,46 @@ export const AvatarForge: React.FC<AvatarForgeProps> = ({
                       placeholder="مثال: صائد العمالقة"
                     />
                   </label>
+                </div>
+
+                {/* Unlocked Exclusive Titles Quick Selector */}
+                <div className="space-y-2 p-3.5 rounded-xl bg-[#0B1220] border border-white/10">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-[#E6B85C] flex items-center gap-1.5">
+                      <Crown className="w-3.5 h-3.5" />
+                      <span>الألقاب الحصرية المفتوحة ({profile.unlockedTitles.length})</span>
+                    </span>
+                    <span className="text-[11px] text-[#94A3B8]">اضغط للتجهيز الفوري</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {EXCLUSIVE_TITLES.map((t) => {
+                      const unlocked = profile.unlockedTitles.includes(t.label);
+                      const active = draft.title === t.label;
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          disabled={!unlocked}
+                          title={unlocked ? `${t.source}` : `مقفل — ${t.source}`}
+                          onClick={() => {
+                            if (!unlocked) return;
+                            setDraft((prev) => ({ ...prev, title: t.label }));
+                            onEquipTitle?.(t.label);
+                            showToast(`تم تجهيز اللقب «${t.label}»!`);
+                          }}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors ${
+                            active
+                              ? 'bg-[#E6B85C] text-[#0A0F1A] border-[#FDE68A] cursor-pointer'
+                              : unlocked
+                                ? 'bg-[#152038] hover:bg-[#1E2E50] text-[#E2E8F0] border-white/15 cursor-pointer'
+                                : 'bg-[#090E1A] text-[#475569] border-white/5 opacity-60 cursor-not-allowed'
+                          }`}
+                        >
+                          {t.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 <div className="space-y-2.5">
