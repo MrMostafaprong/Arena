@@ -1,0 +1,145 @@
+import { Award, Coins, Compass, Gem, Palette, Shield, Sparkles, Swords, Trophy, User } from "lucide-react";
+const NAV_ITEMS = [
+  { id: "hub", label: "\u0627\u0644\u0646\u0642\u0627\u0628\u0629 \u0648\u0627\u0644\u0633\u0627\u062D\u0629", shortLabel: "\u0627\u0644\u0633\u0627\u062D\u0629", icon: Compass },
+  { id: "forge", label: "\u0627\u0644\u0623\u0641\u062A\u0627\u0631 \u0648\u0627\u0644\u0645\u0647\u0627\u0631\u0627\u062A", shortLabel: "\u0627\u0644\u0623\u0641\u062A\u0627\u0631", icon: User },
+  { id: "armory", label: "\u0627\u0644\u0645\u062A\u062C\u0631 \u0648\u0627\u0644\u0633\u0627\u0645\u0627\u0646", shortLabel: "\u0627\u0644\u0645\u062A\u062C\u0631", icon: Shield },
+  { id: "rewards", label: "\u0627\u0644\u0639\u0642\u0648\u062F \u0648\u0627\u0644\u0645\u0647\u0627\u0645", shortLabel: "\u0627\u0644\u0645\u0647\u0627\u0645", icon: Sparkles },
+  { id: "pvp", label: "\u0627\u0644\u062A\u0646\u0627\u0641\u0633 \u0648\u0627\u0644\u062F\u0631\u062F\u0634\u0629", shortLabel: "\u0627\u0644\u062A\u0646\u0627\u0641\u0633", icon: Trophy }
+];
+export const TopNav = ({
+  active,
+  profile,
+  systemTheme,
+  onToggleSystemTheme,
+  onNavigate,
+  onQuickFight
+}) => {
+  return <>
+      <header
+    className="sticky top-0 z-30 backdrop-blur-xl border-b shadow-lg shadow-black/35"
+    style={{
+      backgroundColor: "var(--sys-surface-deep)",
+      borderColor: "var(--sys-border)"
+    }}
+  >
+        <div className="max-w-[1360px] mx-auto px-3 sm:px-6 h-16 landscape-phone-header-inner flex items-center justify-between gap-2 sm:gap-3">
+          {
+    /* Zone 1: Manhwa System Crest & Brand */
+  }
+          <button
+    type="button"
+    onClick={() => onNavigate("hub")}
+    className="font-display text-sm sm:text-xl font-extrabold tracking-tight text-[#F8FAFC] hover:opacity-90 transition-opacity whitespace-nowrap shrink-0 cursor-pointer flex items-center gap-2"
+  >
+            <span
+    className="w-7 h-7 rounded-lg border flex items-center justify-center shrink-0"
+    style={{
+      borderColor: "var(--sys-accent)",
+      background: "linear-gradient(135deg, var(--sys-accent-soft), var(--sys-primary-soft))"
+    }}
+    aria-hidden="true"
+  >
+              <span
+    className="w-2.5 h-2.5 rotate-45 inline-block"
+    style={{ backgroundColor: "var(--sys-accent)" }}
+  />
+            </span>
+            <span>ميدان الأبطال</span>
+          </button>
+
+          {
+    /* Zone 2: Desktop + Landscape Phone Navigation Links */
+  }
+          <nav className="hidden md:flex landscape-phone-inline-nav items-center gap-3 sm:gap-5 lg:gap-7 overflow-x-auto no-scrollbar">
+            {NAV_ITEMS.map((item) => {
+    const isActive = active === item.id;
+    return <button
+      key={item.id}
+      type="button"
+      onClick={() => onNavigate(item.id)}
+      className={`relative py-2 text-sm font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${isActive ? "text-[#F8FAFC]" : "text-[#94A3B8] hover:text-[#F1F5F9]"}`}
+    >
+                  {item.label}
+                  {isActive && <span
+      className="absolute bottom-0 inset-x-0 h-0.5 rounded-full"
+      style={{
+        background: "linear-gradient(to left, var(--sys-primary), var(--sys-accent), var(--sys-primary))"
+      }}
+    />}
+                </button>;
+  })}
+          </nav>
+
+          {
+    /* Zone 3: Theme Switcher + Currencies + Primary Action */
+  }
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+    type="button"
+    onClick={onToggleSystemTheme}
+    title="تبديل سمة واجهة المانهوا (النظام الملكي / الهاوية القرمزية)"
+    className="min-h-[38px] px-2.5 py-1.5 rounded-lg bg-[#0C1324] hover:bg-[#15203A] border border-white/15 text-xs font-bold text-[#F1F5F9] flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+  >
+              <Palette className="w-3.5 h-3.5" style={{ color: "var(--sys-primary)" }} />
+              <span className="hidden sm:inline">
+                {systemTheme === "royal_cyan" ? "\u0627\u0644\u0646\u0638\u0627\u0645 \u0627\u0644\u0645\u0644\u0643\u064A" : "\u0627\u0644\u0647\u0627\u0648\u064A\u0629 \u0627\u0644\u0628\u0646\u0641\u0633\u062C\u064A\u0629"}
+              </span>
+            </button>
+
+            {profile && <div className="hidden lg:flex items-center gap-2.5 px-3 py-1.5 rounded-lg bg-[#0B1222] border border-white/10 text-xs font-mono-num">
+                <span className="flex items-center gap-1 text-[#E6B85C]" title="الذهب">
+                  <Coins className="w-3.5 h-3.5" />
+                  <span>{profile.gold}</span>
+                </span>
+                <span className="text-white/15">|</span>
+                <span className="flex items-center gap-1 text-[#38BDF8]" title="الجواهر">
+                  <Gem className="w-3.5 h-3.5" />
+                  <span>{profile.gems}</span>
+                </span>
+                <span className="text-white/15">|</span>
+                <span className="flex items-center gap-1 text-[#10B981]" title="أوسمة النقابة">
+                  <Award className="w-3.5 h-3.5" />
+                  <span>{profile.guildMarks}</span>
+                </span>
+              </div>}
+
+            <button
+    type="button"
+    onClick={onQuickFight}
+    className="min-h-[38px] px-3 sm:px-4 py-2 text-xs sm:text-sm font-bold system-btn-primary rounded-lg transition-all whitespace-nowrap shrink-0 cursor-pointer flex items-center gap-1.5"
+  >
+              <Swords className="w-4 h-4" />
+              <span>ابدأ القتال</span>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {
+    /* Responsive Mobile Bottom Navigation Bar (< md, hidden in short horizontal phone landscape) */
+  }
+      <nav
+    aria-label="التنقل السريع"
+    className="md:hidden landscape-phone-hide-bottom fixed bottom-0 inset-x-0 z-30 border-t backdrop-blur-xl px-1 py-1 grid grid-cols-5 gap-1"
+    style={{
+      backgroundColor: "var(--sys-surface-deep)",
+      borderColor: "var(--sys-border)"
+    }}
+  >
+        {NAV_ITEMS.map((item) => {
+    const Icon = item.icon;
+    const isActive = active === item.id;
+    return <button
+      key={`mob_${item.id}`}
+      type="button"
+      onClick={() => onNavigate(item.id)}
+      className={`min-h-[48px] px-1 py-1 rounded-lg flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition-colors cursor-pointer ${isActive ? "text-[#F8FAFC] bg-white/10" : "text-[#94A3B8]"}`}
+      style={isActive ? { color: "var(--sys-primary)" } : void 0}
+    >
+              <Icon className="w-4 h-4" />
+              <span className="truncate max-w-full">{item.shortLabel}</span>
+            </button>;
+  })}
+      </nav>
+    </>;
+};

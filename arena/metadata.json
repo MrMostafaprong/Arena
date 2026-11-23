@@ -1,0 +1,6 @@
+{
+  "name": "ميدان الأبطال",
+  "description": "لعبة قتال ثلاثية الأبعاد على الويب تعمل بسلاسة على الأجهزة الضعيفة بدون WebGL2، مع بناء أفتار من الصفر، أسلحة وقوى متعددة، وحوش، مكافآت وتنافس مباشر بين اللاعبين.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
